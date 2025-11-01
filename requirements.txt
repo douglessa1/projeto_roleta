@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+supabase
+pandas
+numpy
+python-dotenv
+selenium
+undetected-chromedriver
+scikit-learn
+joblib
+xgboost

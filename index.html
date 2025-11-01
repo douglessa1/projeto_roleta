@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analista de Roleta v4.3 - Painel Premium</title>
+    <!-- Importa o Cliente Supabase JS, Tailwind CSS, e Heroicons -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    
+    <script>
+        // Configuração do Tailwind para o tema "Premium"
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        emerald: { 400: '#34d399', 500: '#10b981' }, // Verde Acento
+                        pink: { 400: '#f472b6', 500: '#ec4899' },   // Vermelho/Risco
+                        amber: { 400: '#fbbf24', 500: '#f59e0b' }, // Info/Confiança
+                    },
+                    // Efeito "Vidro Fosco"
+                    backdropBlur: {
+                        lg: '12px',
+                    },
+                    // NOVO: Animação de Pulso (Notificação)
+                    keyframes: {
+                        pulseEmerald: {
+                            '0%, 100%': { opacity: 1, boxShadow: '0 0 15px rgba(16, 185, 129, 0.5)' },
+                            '50%': { opacity: 0.8, boxShadow: '0 0 25px rgba(16, 185, 129, 1)' },
+                        }
+                    },
+                    animation: {
+                        'pulse-emerald': 'pulseEmerald 1.5s ease-in-out',
+                    }
+                },
+            },
+        }
+    </script>
+    
+    <style>
+        /* Estilos Globais */
+        body { font-family: 'Inter', sans-serif; }
+        /* Efeito de Vidro Fosco (Glassmorphism) */
+        .glass-card {
+            background-color: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
+        }
+        
+        /* Estilos de Roleta (Visual Premium) */
+        .color-red { background-color: #ec4899; color: white; } 
+        .color-black { background-color: #374151; color: white; } 
+        .color-zero { background-color: #10b981; color: white; }
+        
+        /* Círculo do Último Número (GRANDE, na Sidebar) */
+        .last-number-badge-large {
+            display: flex; align-items: center; justify-content: center;
+            height: 100px; width: 100px;
+            border-radius: 9999px; font-size: 2.25rem; font-weight: 800;
+            border: 4px solid; margin: 0 auto 1rem auto;
+            box-shadow: 0 0 25px rgba(255, 255, 255, 0.2);
+        }
+        .last-number-badge-large.color-red { border-color: #ec4899; box-shadow: 0 0 25px #ec4899; }
+        .last-number-badge-large.color-black { border-color: #374151; box-shadow: 0 0 25px #374151; }
+        .last-number-badge-large.color-zero { border-color: #10b981; box-shadow: 0 0 25px #10b981; }
+
+        /* Círculos do Cluster de Aposta */
+        .bet-number {
+            width: 40px; height: 40px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1rem; font-weight: bold;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+        }
+        
+        /* Bolhas do Histórico (Pequenas) */
+        .history-bubble {
+            width: 28px; height: 28px; font-size: 0.75rem; /* text-xs */
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 0.375rem; /* rounded-md */
+            font-weight: bold; flex-shrink: 0;
+        }
+
+        /* Scrollbar customizada (para Webkit) */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.05); }
+        ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 10px; }
+        
+        /* Estilo dos Tooltips (Pop-ups) */
+        [data-tooltip] { position: relative; cursor: pointer; }
+        [data-tooltip]::after {
+            content: attr(data-tooltip);
+            position: absolute; bottom: 110%; left: 50%;
+            transform: translateX(-50%);
+            background-color: #1F2937; color: #E5E7EB;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 8px 12px; border-radius: 8px;
+            font-size: 0.75rem; font-weight: 500;
+            width: 250px; text-align: center;
+            visibility: hidden; opacity: 0;
+            transition: opacity 0.2s, visibility 0.2s;
+            z-index: 1000;
+        }
+        [data-tooltip]:hover::after { visibility: visible; opacity: 1; }
+        
+        /* Estilo do Dropdown (Select) */
+        .strategy-select {
+            background-color: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #E5E7EB; border-radius: 0.5rem; padding: 0.5rem 1rem;
+            font-size: 0.875rem; font-weight: 600;
+            -webkit-appearance: none; -moz-appearance: none; appearance: none;
+            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpath d='M7 7l3-3 3 3m0 6l-3 3-3-3' /%3e%3c/svg%3e");
+            background-repeat: no-repeat; background-position: right 0.75rem center; background-size: 1em 1em;
+        }
+        .strategy-select:focus { outline: 2px solid #10b981; outline-offset: 2px; }
+        
+        /* Estilo dos Botões de Filtro */
+        .filter-button {
+            background-color: rgba(255, 255, 255, 0.05); /* glass */
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #E5E7EB; /* text-light */
+            padding: 0.5rem 1rem; /* py-2 px-4 */
+            border-radius: 9999px; /* rounded-full */
+            font-size: 0.875rem; /* text-sm */
+            font-weight: 600; /* font-semibold */
+            white-space: nowrap; transition: all 0.2s;
+        }
+        .filter-button:hover { background-color: rgba(255, 255, 255, 0.1); }
+        .filter-button.active {
+            background-color: #10b981; /* emerald-500 */
+            color: #000; /* black */
+            border-color: #10b981;
+            box-shadow: 0 0 15px rgba(16, 185, 129, 0.5);
+        }
+        
+        /* NOVO: Botão de Play/Pause */
+        #bot-toggle-btn {
+            font-size: 1.25rem; /* text-xl */
+            padding: 0.75rem; /* p-3 */
+            width: 52px; height: 52px;
+            margin-top: 1.25rem; /* mt-5 */
+            transition: all 0.2s;
+        }
+        #bot-toggle-btn.running {
+            background-color: rgba(16, 185, 129, 0.2); /* bg-emerald-500/20 */
+            color: #34d399; /* text-emerald-400 */
+        }
+        #bot-toggle-btn.paused {
+            background-color: rgba(236, 72, 153, 0.2); /* bg-pink-500/20 */
+            color: #f472b6; /* text-pink-400 */
+        }
+        
+        /* NOVO: Animação de Pulso (Notificação de Aposta) */
+        .pulse-once {
+            animation: pulseEmerald 1.5s ease-in-out;
+        }
+        
+    </style>
+</head>
+<body class="bg-black text-gray-200 min-h-screen">
+
+    <!-- Efeitos de Fundo (Brilhos Radiais) -->
+    <div class="absolute top-0 left-0 -translate-x-1/4 -translate-y-1/4 w-96 h-96 bg-emerald-500/30 rounded-full filter blur-3xl opacity-20 z-0" aria-hidden="true"></div>
+    <div class="absolute bottom-0 right-0 translate-x-1/4 translate-y-1/4 w-96 h-96 bg-pink-500/30 rounded-full filter blur-3xl opacity-20 z-0" aria-hidden="true"></div>
+
+    <!-- Container Principal do Dashboard -->
+    <div id="dashboard-screen" class="relative z-10 max-w-7xl mx-auto p-4 md:p-6">
+
+        <!-- ===== 1. Header (Cabeçalho) ===== -->
+        <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
+            <div>
+                <h1 class="text-3xl font-bold text-white">Analista de Roleta v4.3</h1>
+                <div class="flex items-center gap-2 text-sm text-gray-400">
+                    <i class="fa-regular fa-clock"></i>
+                    <span id="update-time-label">Atualizado há 3s</span>
+                </div>
+            </div>
+            
+            <!-- Controles do Bot (Start/Stop e Estratégia) -->
+            <div class="flex items-center gap-4">
+                 <div>
+                    <label for="strategy-select" class="block text-xs text-gray-400 mb-1">Modo de Análise</label>
+                    <select id="strategy-select" class="strategy-select">
+                        <option value="TODAS">Todas as Estratégias</option>
+                        <option value="IA_MODEL">Estratégia I.A. (ML)</option>
+                        <option value="LUCAS_BSB">Roleta BR (Heurística)</option>
+                    </select>
+                </div>
+                
+                <!-- NOVO: Botão de Play/Pause -->
+                <button id="bot-toggle-btn" class="glass-card rounded-full running">
+                    <i id="bot-toggle-icon" class="fa-solid fa-pause"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- Layout de Duas Colunas (Principal + Sidebar) -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+            <!-- ===== Coluna Principal (Estratégias) - Esquerda ===== -->
+            <div class="lg:col-span-2 space-y-4">
+                
+                <!-- Histórico (Strip) - MOVIDO PARA CIMA -->
+                <div class="glass-card p-4 rounded-3xl">
+                    <h3 class="text-sm font-bold text-gray-400 tracking-wide mb-3 flex items-center gap-2">
+                        Histórico Recente
+                        <i class="fa-solid fa-circle-info text-xs text-gray-500"
+                           data-tooltip="Os últimos 25 números capturados pelo scraper. O mais à esquerda é o mais recente."></i>
+                    </h3>
+                    <div id="detailed-history" class="flex flex-wrap gap-1.5">
+                        <span class="text-gray-500 text-xs">Carregando histórico...</span>
+                    </div>
+                </div>
+
+                <!-- 2. MainMetrics (Métricas Principais) -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <!-- Card: Projeção Principal -->
+                    <div class="glass-card p-5 rounded-3xl">
+                        <p class="text-sm text-gray-400 tracking-wide mb-1 flex items-center gap-1.5">
+                            Projeção
+                            <i class="fa-solid fa-circle-info text-xs text-gray-500"
+                               data-tooltip="O alvo principal da estratégia de ML quando um 'Edge' (vantagem) é encontrado."></i>
+                        </p>
+                        <p id="metric-projection" class="text-2xl font-bold text-white mb-2">Caçando...</p>
+                        <p id="metric-projection-status" class="text-sm font-medium text-amber-400">Aguardando Padrões</p>
+                    </div>
+                    <!-- Card: Confiança Média -->
+                    <div class="glass-card p-5 rounded-3xl">
+                        <p class="text-sm text-gray-400 tracking-wide mb-1 flex items-center gap-1.5">
+                            Confiança
+                            <i class="fa-solid fa-circle-info text-xs text-gray-500"
+                               data-tooltip="Nível de confiança (baseado no 'Edge') da projeção atual. 0% significa 'Caçando'."></i>
+                        </p>
+                        <p id="metric-confidence" class="text-2xl font-bold text-white mb-2">0%</p>
+                        <p id="metric-confidence-status" class="text-sm font-medium text-gray-500">N/A</p>
+                    </div>
+                    <!-- Card: ROI Composto -->
+                    <div class="glass-card p-5 rounded-3xl">
+                        <p class="text-sm text-gray-400 tracking-wide mb-1 flex items-center gap-1.5">
+                            ROI (Histórico)
+                            <i class="fa-solid fa-circle-info text-xs text-gray-500"
+                               data-tooltip="Retorno Sobre Investimento. (Lucro Líquido / Total Investido) apenas das apostas feitas pela(s) estratégia(s) selecionada(s)."></i>
+                        </p>
+                        <p id="metric-roi" class="text-2xl font-bold text-white mb-2">0.00%</p>
+                        <p id="metric-roi-status" class="text-sm font-medium text-gray-500">R$ 0,00</p>
+                    </div>
+                    <!-- Card: Hit Rate Médio -->
+                    <div class="glass-card p-5 rounded-3xl">
+                        <p class="text-sm text-gray-400 tracking-wide mb-1 flex items-center gap-1.5">
+                            P&L (Histórico)
+                            <i class="fa-solid fa-circle-info text-xs text-gray-500"
+                               data-tooltip="Lucro & Perda (Profit & Loss). O lucro líquido total da(s) estratégia(s) selecionada(s)."></i>
+                        </p>
+                        <p id="summary-pl" class="text-2xl font-bold text-white mb-2">R$ 0,00</p>
+                        <p id="summary-wins-reds" class="text-sm font-medium text-gray-500">0V / 0D</p>
+                    </div>
+                </div>
+
+                <!-- 3. FilterBar (Barra de Filtros) - Funcional -->
+                <div id="filter-bar" class="flex space-x-2 overflow-x-auto pb-2">
+                    <button class="filter-button active" data-filter="Todas">Todas</button>
+                    <button class="filter-button" data-filter="IA">IA</button>
+                    <button class="filter-button" data-filter="Manual">Manual</button>
+                    <button class="filter-button" data-filter="Alto Risco">Alto Risco</button>
+                    <button class="filter-button" data-filter="Quentes">Quentes (Ativos)</button>
+                </div>
+
+                <!-- 5. StrategyGrid (Grid de Estratégias) -->
+                <!-- Este card representa a SUA ESTRATÉGIA (Kelly Vizinhança) -->
+                <div id="strategy-card-ml" class="glass-card p-6 rounded-3xl" data-tags="IA,Alto Risco">
+                    <!-- Cabeçalho do Card -->
+                    <div class="flex justify-between items-start mb-3">
+                        <div>
+                            <!-- Título dinâmico -->
+                            <h3 id="strategy-card-title" class="text-xl font-bold text-white">Estratégia I.A. (ML)</h3>
+                            <div class="flex items-center gap-4 mt-1">
+                                <!-- Badge IA -->
+                                <span class="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/20 text-emerald-400">
+                                    <i class="fa-solid fa-microchip"></i> IA
+                                </span>
+                                <!-- Badge Confiança -->
+                                <span id="strategy-confidence" class="text-sm font-semibold text-amber-400">
+                                    Confiança: 0%
+                                </span>
+                            </div>
+                        </div>
+                        <div class="flex flex-wrap gap-1.5 justify-end">
+                            <span class="px-2.5 py-0.5 bg-white/10 text-gray-300 rounded-full text-xs">Alto Risco</span>
+                            <span class="px-2.5 py-0.5 bg-white/10 text-gray-300 rounded-full text-xs">Gatilho</span>
+                        </div>
+                    </div>
+                    
+                    <!-- KPIs da Estratégia -->
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-2 text-sm mb-4 border-b border-white/10 pb-4">
+                        <div><p class="text-gray-400">Ambiência</p><p id="strategy-tension-label" class="text-white font-semibold">Neutra (0.0)</p></div>
+                        <div><p class="text-gray-400">Próx. Treino (Ciclos)</p><p id="strategy-rounds-train" class="text-white font-semibold">0 / 4</p></div>
+                        <div><p class="text-gray-400">Total Investido</p><p id="summary-invested" class="text-white font-semibold">R$ 0,00</p></div>
+                        <div><p class="text-gray-400">Rodadas</p><p id="summary-total-rounds" class="text-white font-semibold">0</p></div>
+                    </div>
+
+                    <!-- 6. Sugestão de Aposta (O Ponto Crítico) -->
+                    <div id="suggestion-container">
+                        <!-- Estado 1: Caçando Padrões -->
+                        <div id="hunting-state" class="text-center p-4">
+                            <i class="fa-solid fa-magnifying-glass text-3xl text-gray-500 mb-2"></i>
+                            <p class="text-lg font-semibold text-gray-400">Caçando Padrões...</p>
+                            <p class="text-xs text-gray-500">Aguardando confluência de gatilhos (Z-Score, Atraso, Heurística) e validação do ML.</p>
+                        </div>
+                        
+                        <!-- Estado 2: Aposta Sugerida (Ativa) -->
+                        <div id="ready-state" class="hidden">
+                            <h4 class="text-lg font-bold text-emerald-400 mb-3">Sugestão de Aposta Ativa (Edge Encontrado!)</h4>
+                            
+                            <!-- Cluster de Números -->
+                            <div class="mb-4">
+                                <p class="text-sm text-gray-400 mb-2">Cluster de Vizinhança (Alvos):</p>
+                                <div id="prognose-numbers" class="flex justify-center flex-wrap gap-2 min-h-[40px]">
+                                    <!-- Números dinâmicos -->
+                                </div>
+                            </div>
+                            
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-3">
+                                <div>
+                                    <p class="text-gray-400 text-xs tracking-wide">Stake (Fixo)</p>
+                                    <p id="suggest-stake" class="text-white font-semibold text-lg">R$ 0,00</p>
+                                </div>
+                                <div>
+                                    <p class="text-gray-400 text-xs tracking-wide">Risco</p>
+                                    <p class="text-pink-400 font-semibold text-lg">Alto</p>
+                                </div>
+                                <div>
+                                    <p class="text-gray-400 text-xs tracking-wide">Edge (Vantagem)</p>
+                                    <p id="suggest-edge" class="text-emerald-400 font-semibold text-lg">0.00%</p>
+                                </div>
+                                <div>
+                                    <p class="text-gray-400 text-xs tracking-wide">Pagamento</p>
+                                    <p id="suggest-odds" class="text-white font-semibold text-lg">0.00x</p>
+                                </div>
+                            </div>
+                            
+                            <!-- Justificativa (Rationale) -->
+                            <div class="text-xs text-gray-300 bg-black/20 p-3 rounded-lg">
+                                <p class="font-semibold mb-1">Justificativa (Confluência de Padrões):</p>
+                                <p id="suggest-rationale" class="text-gray-400">...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Outras Estratégias (Mock) -->
+                <div class="glass-card p-6 rounded-3xl" data-tags="Manual">
+                    <h3 class="text-xl font-bold text-white">Análise de Zonas Quentes (Manual)</h3>
+                    <div class="flex items-center gap-4 mt-1">
+                        <span class="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-500/20 text-gray-400">
+                            <i class="fa-solid fa-user"></i> Manual
+                        </span>
+                    </div>
+                    <div class="text-center p-4 mt-4 bg-gray-500/10 border border-gray-500/20 rounded-2xl">
+                        <p class="text-sm font-semibold text-gray-400">Monitorando...</p>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- ===== Coluna Lateral (Sidebar) - Direita ===== -->
+            <div class="lg:col-span-1 space-y-4">
+
+                <!-- NOVO: Card do Último Número -->
+                <div class="glass-card p-6 rounded-3xl text-center">
+                    <h3 class="text-sm font-bold text-gray-400 tracking-wide mb-3">ÚLTIMO NÚMERO</h3>
+                    <div id="badge-last-number-container-large">
+                        <div class="last-number-badge-large color-black border-gray-700">--</div>
+                    </div>
+                </div>
+
+                <!-- 7. BankrollSimulation (Simulação de Banca) -->
+                <div class="glass-card p-6 rounded-3xl">
+                    <h3 class="text-xl font-bold text-white tracking-wide mb-4 flex items-center gap-2">
+                        Histórico da Estratégia
+                        <i class="fa-solid fa-circle-info text-xs text-gray-500"
+                           data-tooltip="Gráfico de Lucro & Perda (P&L) acumulado ao longo do tempo, baseado APENAS na estratégia selecionada no menu superior."></i>
+                    </h3>
+                    <!-- Gráfico (Sparkline) -->
+                    <div class="h-24 mb-4 relative">
+                        <canvas id="performance-chart"></canvas>
+                    </div>
+                    <!-- Stats -->
+                    <div class="space-y-3 text-sm mb-4">
+                        <div class="flex justify-between"><span class="text-gray-400">Saldo Atual (Total):</span><span id="bank-saldo" class="text-white font-semibold text-lg">R$ 0,00</span></div>
+                        <div class="flex justify-between"><span class="text-gray-400">Lucro Líquido (Filtro):</span><span id="bank-profit" class="text-emerald-400 font-semibold">R$ 0,00</span></div>
+                        <div class="flex justify-between"><span class="text-gray-400">ROI Composto (Filtro):</span><span id="bank-roi" class="text-emerald-400 font-semibold">0.00%</span></div>
+                    </div>
+                    <p class="text-xs text-gray-400 italic">
+                        <i class="fa-solid fa-circle-info mr-1"></i>
+                        P&L e ROI refletem a estratégia selecionada. Saldo é total.
+                    </p>
+                </div>
+
+                <!-- 8. TableContext (Contexto da Mesa) -->
+                <div class="glass-card p-6 rounded-3xl">
+                     <h3 class="text-xl font-bold text-white tracking-wide mb-4 flex items-center gap-2">
+                        Contexto da Mesa
+                        <i class="fa-solid fa-circle-info text-xs text-gray-500"
+                           data-tooltip="Z-Score (Tensão) mede o desvio de um padrão. Valores acima de 2.0 ou abaixo de -2.0 indicam um forte atraso ou uma forte tendência."></i>
+                    </h3>
+                    <div id="analysis-tbody" class="space-y-3 text-sm">
+                        <!-- Tabela de Tensão (Z-Score) -->
+                        <div class="flex justify-between"><span class="text-gray-400">Tensão (Vermelho):</span><span id="zscore-is_red" class="text-white font-semibold">0.00</span></div>
+                        <div class="flex justify-between"><span class="text-gray-400">Tensão (Preto):</span><span id="zscore-is_black" class="text-white font-semibold">0.00</span></div>
+                        <div class="flex justify-between"><span class="text-gray-400">Tensão (Baixos):</span><span id="zscore-is_low" class="text-white font-semibold">0.00</span></div>
+                        <div class="flex justify-between"><span class="text-gray-400">Tensão (Altos):</span><span id="zscore-is_high" class="text-white font-semibold">0.00</span></div>
+                    </div>
+                    
+                    <div class="mt-4 pt-4 border-t border-white/10">
+                        <p class="text-gray-400 mb-1 text-xs tracking-wide">Insights da IA (Gemini):</D>
+                        <p id="gemini-insights" class="text-white text-sm italic">"Aguardando análise de desvio estatístico..."</p>
+                        <button id="run-gemini-btn" class="w-full mt-3 py-2 px-4 bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 text-xs font-semibold rounded-lg transition">
+                            GERAR JUSTIFICATIVA DETALHADA
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== JS COMPLETO (Toda a Lógica do Dashboard) ===== -->
+    <script>
+        // --- CONFIGURAÇÃO GLOBAL ---
+        const API_BASE_URL = 'http://localhost:8000'; 
+        const SUPABASE_URL = 'https://ugajvctklhmfvtujecyx.supabase.co'; 
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVnYWp2Y3RrbGhtZnZ0dWplY3l4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEyMTY1NDMsImV4cCI6MjA3Njc5MjU0M30.OMcI2ZBMP2w5cLULGHNlJDkYoQo8nBr5WHttboAbnxk'; 
+        const RODADAS_ATE_PROXIMO_TREINO = 4;
+        
+        let supabase;
+        try {
+            supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        } catch (e) {
+            console.error("Falha ao iniciar Supabase:", e);
+        }
+
+        // --- CONSTANTES DE ROLETA ---
+        const CORES_ROLETA = { VERMELHO: [1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36], PRETO: [2, 4, 6, 8, 10, 11, 13, 15, 17, 20, 22, 24, 26, 28, 29, 31, 33, 35], ZERO: [0] };
+        
+        // --- VARIÁVEIS DE ESTADO ---
+        let performanceChart = null;
+        let lastUpdateTime = Date.now();
+        let currentBotStatus = 'RUNNING';
+        let currentStrategyFilter = 'TODAS';
+        let lastTriggerId = null; // Para a notificação de pulso
+
+        // --- FUNÇÕES AUXILIARES DE RENDERIZAÇÃO ---
+        function formatCurrency(value) { 
+            if (typeof value !== 'number') value = 0;
+            return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); 
+        }
+        
+        function getNumberColor(number) { 
+            const numInt = parseInt(number); 
+            if (CORES_ROLETA.ZERO.includes(numInt)) return { name: 'zero', class: 'color-zero' }; 
+            if (CORES_ROLETA.VERMELHO.includes(numInt)) return { name: 'red', class: 'color-red' }; 
+            return { name: 'black', class: 'color-black' }; 
+        }
+
+        function renderLastNumberBadge(number) {
+            const container = document.getElementById('badge-last-number-container-large');
+            if (number === null || number === undefined) {
+                container.innerHTML = '<div class="last-number-badge-large color-black border-gray-700">--</div>';
+                return;
+            }
+            const color = getNumberColor(number);
+            container.innerHTML = `<div class="last-number-badge-large ${color.class} border-${color.name}-500">${number}</div>`;
+        }
+        
+        async function renderHistoryStrip() {
+            try {
+                const { data: historyData, error } = await supabase
+                    .from('raw_results')
+                    .select('number')
+                    .order('timestamp', { ascending: false })
+                    .limit(25);
+                
+                if (error) throw error;
+                const detailedHistoryEl = document.getElementById('detailed-history');
+                if (historyData.length === 0) {
+                     detailedHistoryEl.innerHTML = '<span class="text-gray-500 text-xs">Ainda não há histórico.</span>';
+                     return;
+                }
+                renderLastNumberBadge(historyData[0].number);
+                detailedHistoryEl.innerHTML = historyData.map((item, idx) => {
+                    const num = item.number;
+                    const colorClass = getNumberColor(num).class;
+                    return `<div class="history-bubble ${colorClass} ${idx > 0 ? 'opacity-50' : ''}">${num}</div>`;
+                }).join('');
+            } catch (error) {
+                console.error("Erro ao buscar histórico:", error);
+            }
+        }
+
+        function updateTimer() {
+            const secondsAgo = Math.floor((Date.now() - lastUpdateTime) / 1000);
+            document.getElementById('update-time-label').textContent = `Atualizado há ${secondsAgo}s`;
+        }
+        
+        // NOVO: Atualiza o botão Play/Pause
+        function updateBotStatusUI(status) {
+            const btn = document.getElementById('bot-toggle-btn');
+            const icon = document.getElementById('bot-toggle-icon');
+            if (status === 'RUNNING') {
+                btn.classList.remove('paused');
+                btn.classList.add('running');
+                icon.className = 'fa-solid fa-pause';
+            } else {
+                btn.classList.remove('running');
+                btn.classList.add('paused');
+                icon.className = 'fa-solid fa-play';
+            }
+        }
+
+        // --- FUNÇÕES DE ATUALIZAÇÃO DE DADOS (API) ---
+
+        // (KPIs, Saldo, ROI) - AGORA FILTRADO
+        async function updateKpis(strategyFilter) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/kpis?strategy=${strategyFilter}`);
+                const data = await response.json();
+                
+                if (!data || data.status_code === 500) {
+                    console.error("Erro ao buscar KPIs (servidor):", data);
+                    return; 
+                }
+
+                // Atualiza o Status do Bot (Play/Pause)
+                currentBotStatus = data.bot_status;
+                updateBotStatusUI(currentBotStatus);
+
+                // Métricas Principais (Cards de Vidro)
+                const roiClass = data.roi >= 0 ? 'text-emerald-400' : 'text-pink-400';
+                const plClass = data.p_l >= 0 ? 'text-emerald-400' : 'text-pink-400';
+                
+                document.getElementById('metric-roi').textContent = `${data.roi.toFixed(2)}%`;
+                document.getElementById('metric-roi-status').textContent = `${formatCurrency(data.p_l)}`;
+                document.getElementById('metric-roi-status').className = `text-sm font-medium ${plClass}`;
+
+                // Card P&L
+                document.getElementById('summary-pl').textContent = formatCurrency(data.p_l);
+                document.getElementById('summary-pl').className = `text-2xl font-bold ${plClass} mb-2`;
+
+                // Simulação de Banca (Sidebar)
+                document.getElementById('bank-saldo').textContent = formatCurrency(data.saldo_simulado);
+                document.getElementById('bank-profit').textContent = formatCurrency(data.p_l);
+                document.getElementById('bank-profit').className = `font-semibold ${plClass}`;
+                document.getElementById('bank-roi').textContent = `${data.roi.toFixed(2)}%`;
+                document.getElementById('bank-roi').className = `font-semibold ${plClass}`;
+                
+                // KPIs da Estratégia de ML
+                document.getElementById('strategy-rounds-train').textContent = `${data.rounds_since_train} / ${RODADAS_ATE_PROXIMO_TREINO}`;
+                document.getElementById('summary-invested').textContent = formatCurrency(data.total_investido);
+                
+                // Atualiza o seletor de estratégia e o título do card
+                const strategySelect = document.getElementById('strategy-select');
+                const strategyTitleEl = document.getElementById('strategy-card-title');
+                
+                // CORREÇÃO: Garante que o seletor reflita o filtro atual
+                // E o título do card reflita a estratégia ATIVA (do bot)
+                strategySelect.value = currentStrategyFilter; 
+                
+                if (data.active_strategy === 'LUCAS_BSB') {
+                    strategyTitleEl.textContent = 'Roleta BR (Heurística)';
+                } else { // IA_MODEL ou qualquer outro padrão
+                    strategyTitleEl.textContent = 'Estratégia I.A. (ML)';
+                }
+
+            } catch (error) {
+                console.error("Erro ao buscar KPIs (fetch):", error);
+            }
+        }
+        
+        // (Wins/Reds) - AGORA FILTRADO
+        async function updateWinsReds(strategyFilter) {
+             try {
+                let query = supabase.from('decisions').select('status', { count: 'exact' }).in('status', ['GREEN', 'RED']);
+                
+                // NOVO: Aplica o filtro de backtesting
+                if (strategyFilter !== 'TODAS') {
+                    query = query.eq('strategy_mode', strategyFilter);
+                }
+                
+                const { data, error, count } = await query;
+                if (error) throw error;
+
+                let wins = 0;
+                let reds = 0;
+                if (data) {
+                    data.forEach(item => {
+                        if (item.status === 'GREEN') wins++;
+                        if (item.status === 'RED') reds++;
+                    });
+                }
+                
+                document.getElementById('summary-wins-reds').textContent = `${wins}V / ${reds}D`;
+                document.getElementById('summary-total-rounds').textContent = `${wins + reds}`;
+
+            } catch (error) {
+                console.error("Erro ao buscar Wins/Reds:", error);
+            }
+        }
+
+
+        // (Tensão, Z-Score, Atraso)
+        async function updateAnalysisData() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/analysis/latest`);
+                const res = await response.json();
+                if (res.status_code !== 200) return;
+                
+                const data = res.data;
+                
+                let totalZScore = 0;
+                let countZScore = 0;
+                const ZSCORE_FILTERS = ['is_red', 'is_black', 'is_low', 'is_high', 'is_d1', 'is_d2', 'is_d3', 'is_c1', 'is_c2', 'is_c3'];
+
+                ZSCORE_FILTERS.forEach(id => {
+                    const zscore = data[`zscore_${id}`];
+                    if (zscore !== undefined) {
+                        totalZScore += Math.abs(zscore); 
+                        countZScore++;
+                    }
+                });
+                const averageTension = countZScore > 0 ? totalZScore / countZScore : 0;
+                
+                let tensionLabel = 'Neutra';
+                if (averageTension > 1.5) { tensionLabel = 'Alta'; }
+                if (averageTension < 0.5) { tensionLabel = 'Baixa'; }
+                document.getElementById('strategy-tension-label').textContent = `${tensionLabel} (${averageTension.toFixed(1)})`;
+                
+                // ATUALIZAÇÃO DA TABELA DE TENSÃO (Sidebar)
+                ['is_red', 'is_black', 'is_low', 'is_high'].forEach(id => {
+                    const zscore = data[`zscore_is_${id}`] || 0;
+                    const zClass = Math.abs(zscore) > 1.8 ? (zscore > 0 ? 'text-emerald-400' : 'text-pink-400') : 'text-white';
+                    const el = document.getElementById(`zscore-${id}`);
+                    if (el) {
+                        el.textContent = zscore.toFixed(2);
+                        el.className = `font-semibold ${zClass}`;
+                    }
+                });
+                
+            } catch (error) {
+                console.error("Erro ao buscar dados de análise:", error);
+            }
+        }
+        
+        // (Lógica de Caça - Aposta Ativa)
+        async function updateActiveTrigger() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/triggers/active`);
+                const res = await response.json();
+                const decisao = res.active_trigger;
+                
+                const huntingState = document.getElementById('hunting-state');
+                const readyState = document.getElementById('ready-state');
+
+                if (!decisao || decisao.status !== 'PENDENTE') {
+                    huntingState.classList.remove('hidden');
+                    readyState.classList.add('hidden');
+                    document.getElementById('metric-projection').textContent = 'Caçando...';
+                    document.getElementById('metric-projection-status').textContent = 'Aguardando Padrões';
+                    document.getElementById('metric-projection-status').className = 'text-sm font-medium text-amber-400';
+                    document.getElementById('metric-confidence').textContent = '0%';
+                    document.getElementById('metric-confidence-status').textContent = 'N/A';
+                    document.getElementById('strategy-confidence').textContent = 'Confiança: 0%';
+                    lastTriggerId = null; // Reseta o ID da notificação
+                    return;
+                }
+
+                // Edge Ativo Detectado! (Gatilho)
+                
+                // NOVO: Animação de Pulso (Notificação)
+                if (decisao.id !== lastTriggerId) {
+                    readyState.classList.remove('pulse-once'); // Reseta a animação
+                    void readyState.offsetWidth; // Força o reflow do browser
+                    readyState.classList.add('pulse-once'); // Adiciona a classe para animar
+                    lastTriggerId = decisao.id; // Salva o ID da nova aposta
+                }
+
+                huntingState.classList.add('hidden');
+                readyState.classList.remove('hidden');
+                
+                const edge = parseFloat(decisao.edge || 0);
+                const stake = parseFloat(decisao.stake_investido || 0);
+                const odds = parseFloat(decisao.odds_pagamento || 0);
+                const apostaString = decisao.aposta_sugerida;
+                const apostaArray = apostaString ? apostaString.replace(/[{}]/g, '').split(',').map(s => s.trim()).filter(Boolean) : []; 
+                const projectionName = apostaArray.length > 1 ? `Cluster ${apostaArray[0]}+` : `Pleno ${apostaArray[0]}`;
+
+                // 1. Métricas Principais (Topo)
+                document.getElementById('metric-projection').textContent = projectionName;
+                document.getElementById('metric-projection-status').textContent = 'Edge Ativo!';
+                document.getElementById('metric-projection-status').className = 'text-sm font-medium text-emerald-400';
+                const confidence = Math.min(100, (edge / 0.025) * 100);
+                document.getElementById('metric-confidence').textContent = `${confidence.toFixed(0)}%`;
+                document.getElementById('metric-confidence-status').textContent = `Edge: ${(edge * 100).toFixed(2)}%`;
+                document.getElementById('strategy-confidence').textContent = `Confiança: ${confidence.toFixed(0)}%`;
+
+                // 2. Card de Sugestão
+                document.getElementById('suggest-stake').textContent = formatCurrency(stake);
+                document.getElementById('suggest-edge').textContent = `${(edge * 100).toFixed(2)}%`;
+                document.getElementById('suggest-odds').textContent = `${odds.toFixed(1)}x`;
+                document.getElementById('suggest-rationale').textContent = decisao.motivo_decisao || 'N/A';
+                
+                // 3. Renderiza Números do Cluster
+                const prognoseNumbersEl = document.getElementById('prognose-numbers');
+                prognoseNumbersEl.innerHTML = apostaArray.map(numStr => {
+                    const num = parseInt(numStr);
+                    const colorClass = getNumberColor(num).class;
+                    return `<div class="bet-number ${colorClass}">${num}</div>`;
+                }).join('');
+
+            } catch (error) {
+                console.error("Erro ao buscar trigger ativo:", error);
+            }
+        }
+        
+        // (Gráfico de P&L) - AGORA FILTRADO
+        async function updatePerformanceChart(strategyFilter) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/performance-history?strategy=${strategyFilter}`);
+                const chartData = await response.json();
+
+                if (performanceChart && chartData.labels.length > 0) {
+                    performanceChart.data.labels = chartData.labels;
+                    performanceChart.data.datasets[0].data = chartData.data;
+                    performanceChart.update();
+                } else if (performanceChart) { // Limpa o gráfico se não houver dados
+                     performanceChart.data.labels = [0];
+                     performanceChart.data.datasets[0].data = [0];
+                     performanceChart.update();
+                }
+            } catch (error) {
+                console.error("Erro ao atualizar gráfico de performance:", error);
+            }
+        }
+        
+        // (Análise Gemini)
+        async function runGeminiAnalysis() {
+            const geminiBtn = document.getElementById('run-gemini-btn');
+            const geminiResultEl = document.getElementById('gemini-insights');
+            geminiBtn.disabled = true;
+            geminiBtn.textContent = 'Analisando...';
+            geminiResultEl.textContent = 'Consultando a inteligência artificial...';
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/ai/gemini-analysis`);
+                const data = await response.json();
+                geminiResultEl.textContent = (data.status_code === 200) ? data.analysis : `Erro: ${data.message}`;
+            } catch (error) {
+                geminiResultEl.textContent = 'Erro de conexão com o servidor de IA.';
+            } finally {
+                geminiBtn.disabled = false;
+                geminiBtn.textContent = 'GERAR JUSTIFICATIVA DETALHADA';
+            }
+        }
+
+        // --- INICIALIZAÇÃO DO DASHBOARD ---
+        function initializeChart() {
+            const ctx = document.getElementById('performance-chart').getContext('2d');
+            const gradient = ctx.createLinearGradient(0, 0, 0, 100);
+            gradient.addColorStop(0, 'rgba(16, 185, 129, 0.4)');
+            gradient.addColorStop(1, 'rgba(16, 185, 129, 0)');
+
+            performanceChart = new Chart(ctx, {
+                type: 'line',
+                data: { labels: [0], datasets: [{ label: 'P&L Acumulado', data: [0.0], borderColor: '#10b981', backgroundColor: gradient, fill: true, tension: 0.2, pointRadius: 0 }] },
+                options: { responsive: true, maintainAspectRatio: false, scales: { x: { display: false }, y: { display: false } }, plugins: { legend: { display: false } }, animation: { duration: 500 } }
+            });
+        }
+        
+        function setupEventListeners() {
+            // Filtros
+            const filterBar = document.getElementById('filter-bar');
+            filterBar.addEventListener('click', (e) => {
+                if (e.target.classList.contains('filter-button')) {
+                    filterBar.querySelectorAll('.filter-button').forEach(btn => btn.classList.remove('active'));
+                    e.target.classList.add('active');
+                    // A lógica de filtragem real (esconder/mostrar)
+                    // ... (implementação futura)
+                }
+            });
+            
+            // Botão Gemini
+            document.getElementById('run-gemini-btn').addEventListener('click', runGeminiAnalysis);
+            
+            // Seletor de Estratégia (Controla o Filtro de Backtesting)
+            document.getElementById('strategy-select').addEventListener('change', async (e) => {
+                const newStrategy = e.target.value;
+                currentStrategyFilter = newStrategy; // Atualiza o filtro global
+                
+                // 1. Atualiza o backend sobre a ESTRATÉGIA ATIVA (para novas apostas)
+                try {
+                    await fetch(`${API_BASE_URL}/api/settings/update`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ active_strategy: newStrategy === 'TODAS' ? 'IA_MODEL' : newStrategy }) // "TODAS" não é um modo de aposta, então volta pro padrão
+                    });
+                } catch (error) {
+                    console.error("Falha ao atualizar estratégia ativa:", error);
+                }
+                
+                // 2. Roda o loop de atualização IMEDIATAMENTE com o novo filtro de histórico
+                runUpdateLoop(currentStrategyFilter);
+            });
+            
+            // NOVO: Botão Play/Pause
+            document.getElementById('bot-toggle-btn').addEventListener('click', async () => {
+                const newStatus = (currentBotStatus === 'RUNNING') ? 'PAUSED' : 'RUNNING';
+                try {
+                    const response = await fetch(`${API_BASE_URL}/api/bot/toggle`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ status: newStatus })
+                    });
+                    const data = await response.json();
+                    if (data.status_code === 200) {
+                        currentBotStatus = data.new_status;
+                        updateBotStatusUI(currentBotStatus);
+                    }
+                } catch (error) {
+                    console.error("Falha ao atualizar status do bot:", error);
+                }
+            });
+        }
+
+        // Loop principal de atualização (AGORA FILTRADO)
+        async function runUpdateLoop(strategyFilter = 'TODAS') {
+            try {
+                // Usa o filtro global se nenhum for passado
+                const filter = strategyFilter === 'TODAS' ? document.getElementById('strategy-select').value : strategyFilter;
+                currentStrategyFilter = filter;
+                
+                lastUpdateTime = Date.now();
+                await Promise.all([
+                    updateKpis(filter),
+                    updateWinsReds(filter),
+                    updateAnalysisData(),
+                    updateActiveTrigger(), // O gatilho ativo é sempre em tempo real
+                    renderHistoryStrip(),
+                    updatePerformanceChart(filter)
+                ]);
+            } catch (error) {
+                console.error("Erro no ciclo de atualização:", error);
+            }
+        }
+
+        // --- Ponto de Entrada ---
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeChart();
+            setupEventListeners();
+            
+            // Pega o filtro selecionado no dropdown
+            const initialFilter = document.getElementById('strategy-select').value;
+            
+            runUpdateLoop(initialFilter); // Roda imediatamente com o filtro
+            setInterval(() => {
+                // Continua rodando com o filtro que o usuário selecionou
+                const currentFilter = document.getElementById('strategy-select').value;
+                runUpdateLoop(currentFilter);
+            }, 3000); // A cada 3s
+            
+            setInterval(updateTimer, 1000);
+            
+            document.getElementById('dashboard-screen').classList.remove('hidden');
+        });
+        
+    </script>
+</body>
+</html>
+
