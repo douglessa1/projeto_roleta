@@ -9,24 +9,22 @@ import numpy as np
 from fastapi.middleware.cors import CORSMiddleware 
 import re
 from pydantic import BaseModel 
+from starlette.responses import JSONResponse
 
 # --- CORREÇÃO DE ERRO .env ---
-# Movemos o load_dotenv para o topo absoluto do programa.
 from dotenv import load_dotenv
 load_dotenv() 
-# Agora as variáveis estão carregadas ANTES de importarmos o database.py
 # -----------------------------
 
-# Importações dos seus módulos (AGORA VÊM DEPOIS)
 import database as db
 import analysis
 from scraper import RouletteScraper
 from ml_model import TrainedMLModel
-import train_model
+# import train_model # <-- REMOVIDO: Não vamos mais treinar a partir daqui
 from gemini_client import generate_content 
 
 # --- CONFIGURAÇÃO ---
-RODADAS_ATE_PROXIMO_TREINO = 4
+# RODADAS_ATE_PROXIMO_TREINO = 4 # <-- REMOVIDO
 # --------------------
 
 # --- INICIALIZAÇÃO DOS COMPONENTES DO AGENTE ---
@@ -34,10 +32,9 @@ db_client = None
 scraper = None
 ml_logic = None
 model_lock = None
-rounds_since_last_train = 0
+# rounds_since_last_train = 0 # <-- REMOVIDO
 
 try:
-    # Esta chamada agora funcionará, pois o .env foi carregado acima.
     db_client = db.get_supabase_client()
     scraper = RouletteScraper() 
     model_lock = Lock() 
@@ -52,29 +49,20 @@ except Exception as e:
     exit(1)
 
 def log(mensagem):
-# ... (O restante do arquivo main.py continua exatamente como a v4.4) ...
     """Função de log centralizada."""
     print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {mensagem}")
 
 # --- VALIDAÇÃO KELLY STAKING COM STAKE FIXO ---
 
 def validar_e_atualizar_saldo_kelly(latest_result: int):
-    """
-    Validação de Resultados para a Aposta Fixa (Baseado no Edge ML).
-    """
     log(f"Validando resultado: {latest_result}")
-    
     decisao_pendente = db.get_latest_pending_decision(db_client)
-    
     if not decisao_pendente:
         log("Nenhuma aposta pendente (Kelly).")
         return True 
-
     config = db.get_config(db_client)
     saldo_atual = float(config['saldo_simulado'])
-    
     dec_id = decisao_pendente['id']
-
     try:
         stake_investido = float(decisao_pendente['stake_investido'])
         odds_pagamento = float(decisao_pendente['odds_pagamento'])
@@ -82,7 +70,6 @@ def validar_e_atualizar_saldo_kelly(latest_result: int):
         log(f"AVISO: Aposta {dec_id} é LEGADO (faltam chaves Kelly). Marcando como 'LIMPO' para fechar o ciclo.")
         db.update_decision_status(db_client, dec_id, { 'status': 'LIMPO_LEGADO', 'resultado_financeiro': 0.0, 'numero_vencedor': latest_result })
         return True 
-
     aposta_sugerida_raw = decisao_pendente['aposta_sugerida']
     if isinstance(aposta_sugerida_raw, str):
         aposta_sugerida_list = aposta_sugerida_raw.replace('{', '').replace('}', '').split(',')
@@ -92,10 +79,8 @@ def validar_e_atualizar_saldo_kelly(latest_result: int):
         log("ERRO DE TIPAGEM: Aposta sugerida não é string nem lista. Fechando ciclo.")
         db.update_decision_status(db_client, dec_id, {'status': 'TIPAGEM_FALHA'})
         return True
-        
     aposta_sugerida_int = [int(n.strip()) for n in aposta_sugerida_list if n.strip().isdigit()]
     is_win = latest_result in aposta_sugerida_int
-
     if is_win:
         lucro_bruto = stake_investido * odds_pagamento
         lucro_liquido = lucro_bruto - stake_investido 
@@ -105,60 +90,49 @@ def validar_e_atualizar_saldo_kelly(latest_result: int):
         lucro_liquido = -stake_investido
         novo_saldo = saldo_atual + lucro_liquido
         status = 'RED'
-        
     db.update_decision_status(db_client, dec_id, { 'status': status, 'resultado_financeiro': float(lucro_liquido), 'numero_vencedor': latest_result })
     db.update_saldo_simulado(db_client, novo_saldo)
     log(f"{status}! Resultado (Líquido): {lucro_liquido:+.2f}. Novo Saldo: {novo_saldo:.2f}")
     return True
 
 def decidir_nova_aposta(config: dict):
-    """ APLICAÇÃO DA LÓGICA ML: Decide a aposta baseada na Heurística validada pelo Edge. """
-    
     if db.get_latest_pending_decision(db_client):
         log("Já há aposta pendente. Aguardando validação.")
         return
-
-    # Lê a estratégia que o usuário escolheu no dashboard (do config)
-    active_strategy = config.get('active_strategy', 'IA_MODEL') # Padrão é IA_MODEL
+    active_strategy = config.get('active_strategy', 'IA_MODEL') 
     log(f"Buscando oportunidade (Modo: {active_strategy})...")
-
     history_list = db.get_raw_history(db_client, limit=100)
     saldo_atual = float(config['saldo_simulado'])
-    
     min_edge = float(config.get('min_edge_threshold', 0.001))
     kelly_fraction = float(config.get('kelly_fraction', 0.5))
     min_zscore = float(config.get('min_zscore_tension', 1.0))
     chip_value = float(config.get('chip_value', 0.50))
-    
     if len(history_list) < 37: 
         log(f"Histórico insuficiente para análise complexa ({len(history_list)}/37).")
         return
-
     features_df = analysis.gerar_features_avancadas(history_list)
     if features_df is None or features_df.empty:
         log("Features insuficientes para análise.")
         return
-
+    
+    # (v5.11) A lógica de decisão agora é muito mais inteligente
     aposta, edge, stake_proxy, motivo = ml_logic.predict(
         features_df, 
         bankroll=saldo_atual,
         min_edge_threshold=min_edge,
         kelly_fraction=kelly_fraction,
         min_zscore_tension=min_zscore,
-        strategy_mode=active_strategy # Passa o modo de estratégia
+        strategy_mode=active_strategy 
     ) 
     
     if stake_proxy is not None and stake_proxy > 0:
         cluster_size = len(aposta)
         final_stake_value = cluster_size * chip_value
-        
         if final_stake_value > saldo_atual:
             log(f"ML: Stake fixo ({final_stake_value:.2f}) excede o saldo ({saldo_atual:.2f}). Rejeitado.")
             return
-        
         odds_pagamento = 36.0 / cluster_size
         aposta_str_list = [str(n) for n in aposta]
-        
         nova_decisao = {
             'status': 'PENDENTE',
             'aposta_sugerida': '{' + ','.join(aposta_str_list) + '}',
@@ -166,52 +140,37 @@ def decidir_nova_aposta(config: dict):
             'edge': float(edge),  
             'stake_investido': float(final_stake_value), 
             'odds_pagamento': float(odds_pagamento),
-            'strategy_mode': active_strategy # <<< NOVO: Salva qual estratégia foi usada
+            'strategy_mode': active_strategy 
         }
         db.insert_new_decision(db_client, nova_decisao)
-        log(f"NOVA APOSTA FIXA REGISTRADA: Cluster {aposta} | Edge: {edge:.2%} | Stake TOTAL: R$ {final_stake_value:.2f} ({chip_value:.2f} por número)")
+        # Log detalhado (Ponto 6 do seu prompt)
+        log(f"NOVA APOSTA FIXA REGISTRADA (Modo: {active_strategy}):")
+        log(f"   Cluster: {aposta}")
+        log(f"   Confiança (Edge/Score): {edge*100:.2f}%")
+        log(f"   Motivo: {motivo}")
     else:
-        log("ML: Nenhum Edge/Confluência significativa encontrada nesta rodada.")
+        log(f"ML (Modo: {active_strategy}): Nenhum Edge/Confluência significativa encontrada nesta rodada.")
 
 def run_agente_analista_cycle():
     """ O CICLO DE AÇÃO RIGOROSO. """
-    global rounds_since_last_train
-    
     while True:
         try:
-            # --- NOVO: LÓGICA DE START/STOP ---
             config = db.get_config(db_client)
             bot_status = config.get('bot_status', 'RUNNING')
-            
             if bot_status != 'RUNNING':
                 log("Bot está PAUSADO (via dashboard). Aguardando 10s...")
                 time.sleep(10) 
-                continue # Pula o resto do ciclo
-            # ------------------------------------
-            
+                continue 
             latest_result = scraper.get_latest_result() 
             if latest_result is None:
                 time.sleep(5) 
                 continue
-
             db.insert_new_result(db_client, latest_result)
             log(f"Resultado Registrado: {latest_result}")
-
-            # 1. Validar aposta anterior (se houver)
             validar_e_atualizar_saldo_kelly(latest_result)
-            
-            # 2. Decidir nova aposta (passando o config que já lemos)
             decidir_nova_aposta(config)
             
-            # LÓGICA DE AUTO-TREINAMENTO
-            rounds_since_last_train += 1
-            if rounds_since_last_train >= RODADAS_ATE_PROXIMO_TREINO:
-                log(f"INICIANDO AUTO-TREINO APÓS {RODADAS_ATE_PROXIMO_TREINO} RODADAS...")
-                training_thread = Thread(target=train_model.train_and_save_model, args=(model_lock,), daemon=True)
-                training_thread.start()
-                rounds_since_last_train = 0
-                time.sleep(2) 
-                ml_logic.reload_model()
+            # --- LÓGICA DE AUTO-TREINAMENTO REMOVIDA (v4.7) ---
             
         except Exception as e:
             log(f"ERRO CRÍTICO NO CICLO PRINCIPAL: {e}")
@@ -237,19 +196,34 @@ app.add_middleware( CORSMiddleware, allow_origins=origins, allow_credentials=Tru
 
 # Modelos Pydantic para receber dados
 class BotTogglePayload(BaseModel):
-    status: str # Espera "RUNNING" ou "PAUSED"
-
+    status: str 
 class UserConfigUpdate(BaseModel):
     chip_value: float = None
     kelly_fraction: float = None
     min_edge_threshold: float = None
     active_strategy: str = None
 
-# --- ENDPOINTS DE CONTROLE ---
+# --- ENDPOINTS DE CONTROLE E SEGURANÇA ---
+
+@app.get("/api/config/frontend")
+async def get_frontend_config():
+    """ Injeta as chaves públicas (seguras) do .env para o frontend. """
+    try:
+        public_url = os.environ.get("SUPABASE_URL")
+        public_key = os.environ.get("SUPABASE_ANON_KEY") 
+        if not public_url or not public_key:
+            log("ERRO DE SEGURANÇA: SUPABASE_URL ou SUPABASE_ANON_KEY não encontrados no .env")
+            raise ValueError("SUPABASE_URL ou SUPABASE_ANON_KEY não encontrados no .env")
+        return JSONResponse({
+            "SUPABASE_URL": public_url,
+            "SUPABASE_ANON_KEY": public_key
+        })
+    except Exception as e:
+        log(f"Erro ao buscar config do frontend: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 @app.post("/api/bot/toggle")
 async def toggle_bot_status(payload: BotTogglePayload):
-    """ Liga ou Desliga o bot (RUNNING/PAUSED) """
     try:
         new_status = payload.status
         if new_status not in ['RUNNING', 'PAUSED']:
@@ -263,7 +237,6 @@ async def toggle_bot_status(payload: BotTogglePayload):
 
 @app.post("/api/settings/update")
 async def update_user_settings(config: UserConfigUpdate):
-    """ Atualiza as configurações de risco (chip, kelly, etc) """
     try:
         update_data = config.dict(exclude_unset=True)
         if not update_data:
@@ -274,31 +247,25 @@ async def update_user_settings(config: UserConfigUpdate):
     except Exception as e:
         log(f"Erro ao atualizar settings: {e}")
         return {"status_code": 500, "message": "Erro interno"}
-
-# --- ENDPOINTS DE DADOS (AGORA COM FILTRO DE ESTRATÉGIA) ---
     
 @app.get("/api/kpis")
 async def get_kpis(strategy: str = Query("TODAS")):
-    """ Retorna o saldo, P&L e ROI para o dashboard, filtrado por estratégia. """
     try:
         config = db.get_config(db_client)
         decisions_data = db.get_all_decisions(db_client, strategy_filter=strategy) 
         
-        # CORREÇÃO: Lida com o caso de não haver nenhuma aposta (lista vazia)
+        # O rounds_since_train não existe mais
+        
         if not decisions_data:
              return {
                 "saldo_simulado": float(config.get('saldo_simulado', 1000.0)),
                 "total_investido": 0.0,
                 "p_l": 0.0,
                 "roi": 0.0,
-                "rounds_since_train": rounds_since_last_train,
                 "active_strategy": config.get('active_strategy', 'IA_MODEL'),
-                "bot_status": config.get('bot_status', 'RUNNING') # Envia o status do bot
+                "bot_status": config.get('bot_status', 'RUNNING') 
             }
-
         df_decisions = pd.DataFrame(decisions_data)
-        
-        # CORREÇÃO: Lida com o caso de haver apostas, mas nenhuma ser GREEN/RED (ex: PENDENTE)
         df_concluido = df_decisions[df_decisions['status'].isin(['GREEN', 'RED'])].copy()
         if df_concluido.empty:
             return {
@@ -306,21 +273,17 @@ async def get_kpis(strategy: str = Query("TODAS")):
                 "total_investido": 0.0,
                 "p_l": 0.0,
                 "roi": 0.0,
-                "rounds_since_train": rounds_since_last_train,
                 "active_strategy": config.get('active_strategy', 'IA_MODEL'),
                 "bot_status": config.get('bot_status', 'RUNNING')
             }
-
         total_investido = df_concluido['stake_investido'].astype(float).sum()
         p_l = df_concluido['resultado_financeiro'].astype(float).sum()
         roi = (p_l / total_investido) * 100 if total_investido > 0 else 0
-        
         return {
             "saldo_simulado": float(config['saldo_simulado']),
             "total_investido": round(total_investido, 2),
             "p_l": round(p_l, 2),
             "roi": round(roi, 2),
-            "rounds_since_train": rounds_since_last_train,
             "active_strategy": config.get('active_strategy', 'IA_MODEL'),
             "bot_status": config.get('bot_status', 'RUNNING')
         }
@@ -330,37 +293,25 @@ async def get_kpis(strategy: str = Query("TODAS")):
 
 @app.get("/api/performance-history")
 async def get_performance_history(strategy: str = Query("TODAS")):
-    """ Busca o P&L acumulado, filtrado por estratégia. """
     try:
         decisions_data = db.get_all_decisions(db_client, strategy_filter=strategy) 
         if not decisions_data:
             return {"labels": [0], "data": [0.0]}
-            
         df = pd.DataFrame(decisions_data)
-        
-        # CORREÇÃO: Ordena por 'timestamp' (que agora existe)
         df = df.sort_values(by='timestamp', ascending=True)
-        
         df_concluido = df[df['status'].isin(['GREEN', 'RED'])].copy()
         if df_concluido.empty:
              return {"labels": [0], "data": [0.0]}
-
         df_concluido['p_l'] = df_concluido['resultado_financeiro'].astype(float)
         df_concluido['p_l_acumulado'] = df_concluido['p_l'].cumsum()
-
         labels = list(range(1, len(df_concluido) + 1))
         data = df_concluido['p_l_acumulado'].tolist()
-        
         labels.insert(0, 0)
         data.insert(0, 0.0)
-
         return {"labels": labels, "data": data}
-        
     except Exception as e:
         log(f"Erro ao gerar histórico de performance: {e}")
         return {"labels": [0], "data": [0.0]}
-
-# --- Endpoints restantes (sem mudanças) ---
 
 @app.get("/api/analysis/latest")
 async def get_latest_analysis():
@@ -406,7 +357,6 @@ async def get_gemini_analysis():
         return {"status_code": 200, "analysis": gemini_response}
     except Exception as e:
         return {"status_code": 500, "message": f"Erro na chamada Gemini: {e}"}
-
 
 if __name__ == "__main__":
     log("Iniciando servidor FastAPI/Uvicorn...")

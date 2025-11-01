@@ -9,7 +9,7 @@ import math
 try:
     from analysis import WHEEL_ORDER, TOTAL_NUMBERS, WHEEL_POSITIONS, get_physical_neighbors, CALLING_NUMBERS
 except ImportError:
-    # Fallback caso o analysis.py não seja encontrado
+    # Fallback (omitido por brevidade, mas está no seu arquivo)
     WHEEL_ORDER = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26]
     TOTAL_NUMBERS = 37 
     WHEEL_POSITIONS = {number: i for i, number in enumerate(WHEEL_ORDER)}
@@ -21,30 +21,29 @@ except ImportError:
                 index = (pos + i) % TOTAL_NUMBERS
                 neighbors.add(WHEEL_ORDER[index])
         return neighbors
-    # DICIONÁRIO DE REGRAS HEURÍSTICAS DE CHAMADA (COPIADO DO analysis.py)
-    CALLING_NUMBERS = {
-        0: {1, 5, 8, 9, 10, 11, 13, 14, 15, 16, 17, 20, 21, 24, 25, 26, 29},
-        1: {0, 27, 21, 20, 34}, 2: {22, 28, 31, 36}, 3: {3, 7, 12, 19}, 4: {7, 10, 19, 21},
-        5: {0, 27, 21, 20, 34}, 6: {9, 27, 28, 34}, 7: {3, 19, 21, 28, 29}, 8: {0, 8, 21, 15, 28},
-        9: {0, 6, 22, 30}, 10: {0, 4, 7, 13, 17}, 11: {3, 15, 22, 24}, 12: {9, 16, 21, 27, 32},
-        13: {0, 28, 31}, 14: {0, 5, 20, 27, 23, 32}, 15: {0, 11, 22}, 16: {0, 12, 19, 24},
-        17: {0, 10, 13, 20, 21, 29}, 18: {11, 15, 22}, 19: {3, 4, 7, 16}, 20: {0, 15, 17, 27},
-        21: {0, 7, 12, 23, 27}, 22: {2, 11, 15, 22}, 23: {12, 21, 27, 32}, 24: {0, 19, 35},
-        25: {18, 25, 26, 36}, 26: {0, 10, 12, 15, 25, 28, 29, 32}, 27: {12, 21, 20, 32},
-        28: {13, 31}, 29: {0, 13, 17, 20, 24}, 30: {4, 7, 9, 11, 12},
-        31: set(), 32: set(), 33: set(), 34: {6, 27}, 35: {24}, 36: {2, 25},
-    }
+    CALLING_NUMBERS = { 0: {1, 5, 8, 9, 10, 11, 13, 14, 15, 16, 17, 20, 21, 24, 25, 26, 29}, 1: {0, 27, 21, 20, 34}, 2: {22, 28, 31, 36}, 3: {3, 7, 12, 19}, 4: {7, 10, 19, 21}, 5: {0, 27, 21, 20, 34}, 6: {9, 27, 28, 34}, 7: {3, 19, 21, 28, 29}, 8: {0, 8, 21, 15, 28}, 9: {0, 6, 22, 30}, 10: {0, 4, 7, 13, 17}, 11: {3, 15, 22, 24}, 12: {9, 16, 21, 27, 32}, 13: {0, 28, 31}, 14: {0, 5, 20, 27, 23, 32}, 15: {0, 11, 22}, 16: {0, 12, 19, 24}, 17: {0, 10, 13, 20, 21, 29}, 18: {11, 15, 22}, 19: {3, 4, 7, 16}, 20: {0, 15, 17, 27}, 21: {0, 7, 12, 23, 27}, 22: {2, 11, 15, 22}, 23: {12, 21, 27, 32}, 24: {0, 19, 35}, 25: {18, 25, 26, 36}, 26: {0, 10, 12, 15, 25, 28, 29, 32}, 27: {12, 21, 20, 32}, 28: {13, 31}, 29: {0, 13, 17, 20, 24}, 30: {4, 7, 9, 11, 12}, 31: set(), 32: set(), 33: set(), 34: {6, 27}, 35: {24}, 36: {2, 25}, }
+
 
 # --- CONFIGURAÇÃO DE VIZINHANÇA ---
-# Define o raio de vizinhos a ser considerado
 RADIUS_VIZINHOS = 3 
-
-# Mapeamento de todos os 37 clusters de vizinhança possíveis
 WHEEL_CLUSTERS = {
     n: get_physical_neighbors(n, radius=RADIUS_VIZINHOS) | {n} 
     for n in range(TOTAL_NUMBERS)
 }
 
+# --- MAPEAMENTOS DE ZONAS (v5.8) ---
+VERMELHOS = {1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36}
+PRETOS = {2, 4, 6, 8, 10, 11, 13, 15, 17, 20, 22, 24, 26, 28, 29, 31, 33, 35}
+BAIXOS = set(range(1, 19))
+ALTOS = set(range(19, 37))
+IMPARES = set(range(1, 37, 2))
+PARES = set(range(2, 37, 2))
+DUZIA_1 = set(range(1, 13))
+DUZIA_2 = set(range(13, 25))
+DUZIA_3 = set(range(25, 37))
+COLUNA_1 = set(range(1, 37, 3))
+COLUNA_2 = set(range(2, 37, 3))
+COLUNA_3 = set(range(3, 37, 3))
 
 # --- CONFIGURAÇÕES DO MODELO (PATHs) ---
 MODEL_DIR = "ml_models" 
@@ -58,24 +57,113 @@ FEATURES_ORDER_PATH = os.path.join(MODEL_DIR, FEATURES_ORDER_FILENAME)
 # --- FUNÇÕES AUXILIARES ---
 
 def calculate_cluster_edge_and_odds(cluster_size: int, cluster_probability: float):
-    """ Calcula o Edge (vantagem) e a Odd (pagamento bruto) """
     P_teorica = cluster_size / 37.0
-    # A odd de pagamento BRUTA (incluindo o stake de volta) é 36 / N
     odds = 36.0 / cluster_size 
     edge = cluster_probability - P_teorica
     return odds, edge
 
 def calculate_kelly_stake(edge: float, odds: float, bankroll: float, cluster_size: int, kelly_fraction: float):
-    # Esta função não é mais usada para o stake, mas é mantida para validar o Edge
     if edge <= 0: return 0.0
     P_model = edge + (cluster_size / 37.0) 
-    b = odds - 1 # b é a odd LÍQUIDA (ex: 35 para 1, não 36 para 1)
+    b = odds - 1 
     q = 1 - P_model
     if b <= 0.001 or P_model <= 0.0: return 0.0
     kelly_percentage = (b * P_model - q) / b
     stake_percentage = max(0, kelly_percentage * kelly_fraction) 
     return bankroll * stake_percentage
 
+# --- LÓGICA DE CONFLUÊNCIA HEURÍSTICA (v5.8 - Zonas Quentes e Frias) ---
+def calculate_heuristic_score(features: pd.Series, cluster_numbers: set) -> tuple[int, str]:
+    """
+    Calcula um "Score de Confluência" para o Modo LUCAS_BSB,
+    validando o histórico (v5.8 - Quente e Frio).
+    """
+    score = 0
+    motivos = []
+    
+    # 1. Padrões de Gatilho (Estes são os mais fortes)
+    if features.get('was_called_by_previous', 0) > 0: # O N_t foi chamado pelo N_t-1
+        score += 2 # Peso maior
+        motivos.append("Gatilho BSB (N-1 -> N)")
+    if features.get('current_is_terminal_sum', 0) > 0: # O N_t completou uma soma de terminal
+        score += 1
+        motivos.append("Padrão de Soma de Terminais")
+
+    # 2. Validação de Histórico (Atraso/Tensão de Zona)
+    alvo_encontrado_em_zona = set() # Para não repetir motivos
+
+    for num in cluster_numbers:
+        # Verifica Atraso Individual (Sinal Forte)
+        atraso_num = features.get(f'is_num_{num}_atraso', 0)
+        if atraso_num > 74: # Muito atrasado (mais de 2x a média)
+            if 'atraso_individual' not in alvo_encontrado_em_zona:
+                score += 2
+                motivos.append(f"Alvo {num} está a {atraso_num} spins (Atraso Alto)")
+                alvo_encontrado_em_zona.add('atraso_individual')
+        
+        # --- CORREÇÃO v5.8: Adiciona Zonas QUENTES (Tendência) e FRIAS (Atraso) ---
+        
+        # Dúzias
+        if num in DUZIA_1 and 'd1' not in alvo_encontrado_em_zona:
+            if features.get('zscore_is_d1', 0) < -1.5:
+                score += 1; motivos.append(f"Alvo {num} na Dúzia 1 (Atrasada)"); alvo_encontrado_em_zona.add('d1')
+            elif features.get('zscore_is_d1', 0) > 1.5: 
+                score += 1; motivos.append(f"Alvo {num} na Dúzia 1 (Quente)"); alvo_encontrado_em_zona.add('d1')
+        if num in DUZIA_2 and 'd2' not in alvo_encontrado_em_zona:
+            if features.get('zscore_is_d2', 0) < -1.5:
+                score += 1; motivos.append(f"Alvo {num} na Dúzia 2 (Atrasada)"); alvo_encontrado_em_zona.add('d2')
+            elif features.get('zscore_is_d2', 0) > 1.5: 
+                score += 1; motivos.append(f"Alvo {num} na Dúzia 2 (Quente)"); alvo_encontrado_em_zona.add('d2')
+        if num in DUZIA_3 and 'd3' not in alvo_encontrado_em_zona:
+            if features.get('zscore_is_d3', 0) < -1.5:
+                score += 1; motivos.append(f"Alvo {num} na Dúzia 3 (Atrasada)"); alvo_encontrado_em_zona.add('d3')
+            elif features.get('zscore_is_d3', 0) > 1.5: 
+                score += 1; motivos.append(f"Alvo {num} na Dúzia 3 (Quente)"); alvo_encontrado_em_zona.add('d3')
+
+        # Colunas
+        if num in COLUNA_1 and 'c1' not in alvo_encontrado_em_zona:
+            if features.get('zscore_is_c1', 0) < -1.5:
+                score += 1; motivos.append(f"Alvo {num} na Coluna 1 (Atrasada)"); alvo_encontrado_em_zona.add('c1')
+            elif features.get('zscore_is_c1', 0) > 1.5: 
+                score += 1; motivos.append(f"Alvo {num} na Coluna 1 (Quente)"); alvo_encontrado_em_zona.add('c1')
+        if num in COLUNA_2 and 'c2' not in alvo_encontrado_em_zona:
+            if features.get('zscore_is_c2', 0) < -1.5:
+                score += 1; motivos.append(f"Alvo {num} na Coluna 2 (Atrasada)"); alvo_encontrado_em_zona.add('c2')
+            elif features.get('zscore_is_c2', 0) > 1.5: 
+                score += 1; motivos.append(f"Alvo {num} na Coluna 2 (Quente)"); alvo_encontrado_em_zona.add('c2')
+        if num in COLUNA_3 and 'c3' not in alvo_encontrado_em_zona:
+            if features.get('zscore_is_c3', 0) < -1.5:
+                score += 1; motivos.append(f"Alvo {num} na Coluna 3 (Atrasada)"); alvo_encontrado_em_zona.add('c3')
+            elif features.get('zscore_is_c3', 0) > 1.5: 
+                score += 1; motivos.append(f"Alvo {num} na Coluna 3 (Quente)"); alvo_encontrado_em_zona.add('c3')
+
+    # 3. Validação de Tendência (Zonas Quentes / Sequências)
+    if features.get('is_odd_seq_ocorrencia', 0) >= 4:
+        score += 1
+        motivos.append(f"Sequência de {int(features.get('is_odd_seq_ocorrencia'))} Ímpares")
+    if features.get('is_even_seq_ocorrencia', 0) >= 4:
+        score += 1
+        motivos.append(f"Sequência de {int(features.get('is_even_seq_ocorrencia'))} Pares")
+        
+    for num in cluster_numbers:
+        if num in IMPARES and features.get('zscore_is_odd', 0) > 1.5 and 'quente_impar' not in alvo_encontrado_em_zona:
+            score += 1; motivos.append(f"Alvo {num} nos Ímpares (Quente)"); alvo_encontrado_em_zona.add('quente_impar')
+        if num in PARES and features.get('zscore_is_even', 0) > 1.5 and 'quente_par' not in alvo_encontrado_em_zona:
+            score += 1; motivos.append(f"Alvo {num} nos Pares (Quente)"); alvo_encontrado_em_zona.add('quente_par')
+        if num in VERMELHOS and features.get('zscore_is_red', 0) > 1.5 and 'quente_vermelho' not in alvo_encontrado_em_zona: 
+            score += 1; motivos.append(f"Alvo {num} nos Vermelhos (Quente)"); alvo_encontrado_em_zona.add('quente_vermelho')
+        if num in PRETOS and features.get('zscore_is_black', 0) > 1.5 and 'quente_preto' not in alvo_encontrado_em_zona: 
+            score += 1; motivos.append(f"Alvo {num} nos Pretos (Quente)"); alvo_encontrado_em_zona.add('quente_preto')
+        if num in BAIXOS and features.get('zscore_is_low', 0) > 1.5 and 'quente_baixo' not in alvo_encontrado_em_zona: 
+            score += 1; motivos.append(f"Alvo {num} nos Baixos (Quente)"); alvo_encontrado_em_zona.add('quente_baixo')
+        if num in ALTOS and features.get('zscore_is_high', 0) > 1.5 and 'quente_alto' not in alvo_encontrado_em_zona: 
+            score += 1; motivos.append(f"Alvo {num} nos Altos (Quente)"); alvo_encontrado_em_zona.add('quente_alto')
+
+    final_score = score
+    if not motivos:
+        return 0, "Sem confluência de histórico."
+        
+    return final_score, ", ".join(motivos)
 # --------------------------------------------------------
 
 class TrainedMLModel:
@@ -86,83 +174,44 @@ class TrainedMLModel:
         self.classes = None
         self.model_loaded = False
         self.lock = lock
-
-        self.load_model_files()
+        self._model_mtime = 0 
+        self.load_model_files() 
 
     def reload_model(self):
-        """ Função chamada pelo main.py para forçar o recarregamento. """
         print("Recebida ordem de recarregar o modelo...")
         self.load_model_files()
         
     def load_model_files(self):
-        """ Carrega os arquivos .pkl do modelo, scaler e ordem das colunas. """
         print("Tentando carregar/recarregar funil ML...")
         with self.lock:
-            if os.path.exists(MODEL_PATH) and os.path.exists(SCALER_PATH) and os.path.exists(FEATURES_ORDER_PATH):
-                try:
-                    self.model = joblib.load(MODEL_PATH)
-                    self.scaler = joblib.load(SCALER_PATH)
-                    self.feature_columns_in_order = joblib.load(FEATURES_ORDER_PATH)
-
-                    self.classes = list(self.model.classes_) if hasattr(self.model, 'classes_') else list(range(37))
-                    
-                    if not self.feature_columns_in_order or len(self.feature_columns_in_order) == 0:
-                        raise ValueError("Ordem das colunas de features não carregada.")
-
-                    self.model_loaded = True
-                    print(f"🧠 FUNIL DE ESTRATÉGIAS (ML) CARREGADO com sucesso. (Esperando {len(self.feature_columns_in_order)} features)")
-                except Exception as e:
-                    print(f"❌ ERRO ao carregar o modelo ML: {e}")
-                    self.model_loaded = False
-            else:
-                print(f"⚠️ AVISO: Arquivos do funil ML não encontrados. O robô irá iniciar sem decisões ML.")
+            if not os.path.exists(MODEL_PATH):
+                print(f"⚠️ AVISO: Arquivo do modelo não encontrado: {MODEL_PATH}")
                 self.model_loaded = False
+                return
+            if not os.path.exists(SCALER_PATH):
+                print(f"⚠️ AVISO: Arquivo do scaler não encontrado: {SCALER_PATH}")
+                self.model_loaded = False
+                return
+            if not os.path.exists(FEATURES_ORDER_PATH): 
+                print(f"⚠️ AVISO: Arquivo de ordem de features não encontrado: {FEATURES_ORDER_PATH}")
+                self.model_loaded = False
+                return
 
-    def calculate_heuristic_score(self, latest_features: pd.Series, min_zscore_tension: float):
-        """
-        NOVA LÓGICA: Calcula um "Score de Confluência" baseado no PDF.
-        Não olha o alvo, mas sim o "momento" da mesa (zonas quentes/frias).
-        """
-        score = 0
-        rationale = [] # Justificativa
-
-        # Tensão Mínima (Z-Score)
-        z_min = -abs(min_zscore_tension) # ex: -1.0
-        z_max = abs(min_zscore_tension)  # ex: 1.0
-
-        # Padrão 1: Tensão em Cores
-        if latest_features.get('zscore_is_red', 0) < z_min:
-            score += 1
-            rationale.append("Cor Vermelha em forte atraso (fria)")
-        if latest_features.get('zscore_is_black', 0) < z_min:
-            score += 1
-            rationale.append("Cor Preta em forte atraso (fria)")
-
-        # Padrão 2: Tensão em Paridade/Metades
-        if latest_features.get('zscore_is_low', 0) < z_min:
-            score += 1
-            rationale.append("Metade Baixa (1-18) em forte atraso (fria)")
-        if latest_features.get('zscore_is_high', 0) < z_min:
-            score += 1
-            rationale.append("Metade Alta (19-36) em forte atraso (fria)")
-
-        # Padrão 3: Momentum (EWMA)
-        if latest_features.get('is_red_ewma_short', 0) > 0.8:
-            score += 1
-            rationale.append("Momentum Alto (Quente) na Cor Vermelha")
-        if latest_features.get('is_black_ewma_short', 0) > 0.8:
-            score += 1
-            rationale.append("Momentum Alto (Quente) na Cor Preta")
-            
-        # Padrão 4: Tensão em Dúzias/Colunas (Exemplo)
-        if latest_features.get('zscore_is_d1', 0) < z_min - 0.5: # Atraso mais forte
-            score += 2 # Ponto extra
-            rationale.append("1ª Dúzia em atraso extremo (muito fria)")
-        if latest_features.get('zscore_is_c1', 0) > z_max + 0.5: # Tendência mais forte
-            score += 2 # Ponto extra
-            rationale.append("1ª Coluna em alta frequência (muito quente)")
-
-        return score, rationale
+            try:
+                self.model = joblib.load(MODEL_PATH)
+                self.scaler = joblib.load(SCALER_PATH)
+                self.feature_columns_in_order = joblib.load(FEATURES_ORDER_PATH)
+                self.classes = list(self.model.classes_) if hasattr(self.model, 'classes_') else list(range(37))
+                self._model_mtime = os.path.getmtime(MODEL_PATH) 
+                
+                if not self.feature_columns_in_order or len(self.feature_columns_in_order) == 0:
+                    raise ValueError("Ordem das colunas de features não carregada.")
+                self.model_loaded = True
+                print(f"🧠 FUNIL DE ESTRATÉGIAS (ML v5.11) CARREGADO. (Esperando {len(self.feature_columns_in_order)} features)")
+                print(f"   (Versão do Cérebro: {self._model_mtime})")
+            except Exception as e:
+                print(f"❌ ERRO ao carregar o modelo ML: {e}")
+                self.model_loaded = False
 
 
     def predict(self, 
@@ -171,120 +220,120 @@ class TrainedMLModel:
                 min_edge_threshold: float,
                 kelly_fraction: float,
                 min_zscore_tension: float,
-                strategy_mode: str = 'IA_MODEL' # NOVO PARÂMETRO
+                strategy_mode: str = 'IA_MODEL' 
                 ):
-        """
-        PRIORIZAÇÃO EXCLUSIVA: Busca o cluster de vizinhança APENAS nos alvos ativados pela heurística,
-        com o maior Edge positivo validado pelo ML.
-        """
+        
+        try:
+            current_disk_mtime = os.path.getmtime(MODEL_PATH)
+            if current_disk_mtime != self._model_mtime:
+                print(f"DETECTADA NOVA VERSÃO DO 'CÉREBRO' NO DISCO! (Disco: {current_disk_mtime} vs Memória: {self._model_mtime})")
+                self.load_model_files()
+        except Exception as e:
+            print(f"Erro ao verificar a versão do modelo: {e}")
+            self.model_loaded = False
+        
         if not self.model_loaded or features_df is None or features_df.empty:
             return None, None, None, "Rejeitado: Modelo ML não carregado ou features vazias."
-
         
-        # 1. Preparação (Necessário para ambos os modos)
-        prob_map = {}
+        # --- LÓGICA DE TEMPO REAL (v5.10): Usa o último número ---
         try:
             latest_features_row = features_df.iloc[[-1]]
-            input_data = latest_features_row[self.feature_columns_in_order]
+            number_gatilho = latest_features_row['number'].iloc[0]
+            if pd.isna(number_gatilho) or number_gatilho == -1:
+                 return None, None, None, "Rejeitado: Não há número gatilho (N_t) disponível."
+            number_gatilho = int(number_gatilho)
+        except IndexError:
+             return None, None, None, "Rejeitado: Histórico muito curto para identificar N_t."
+        except Exception as e:
+             return None, None, None, f"Erro ao extrair features: {e}"
+        # ---------------------------------------------------------
+
+        try:
+            input_data_features_only = latest_features_row.drop(columns=['number', 'terminal_digit'], errors='ignore')
+            input_data = input_data_features_only[self.feature_columns_in_order] 
             input_data = input_data.fillna(0)
             
             with self.lock:
                 input_scaled = self.scaler.transform(input_data)
-                
-                # Apenas o MODO IA precisa de probabilidades
-                if strategy_mode == 'IA_MODEL':
-                    probabilities = self.model.predict_proba(input_scaled)[0]
-                    prob_map = {int(self.classes[i]): probabilities[i] for i in range(len(self.classes))}
-        
+                probabilities = self.model.predict_proba(input_scaled)[0]
+            prob_map = {int(self.classes[i]): probabilities[i] for i in range(len(self.classes))}
         except Exception as e:
-            print(f"❌ ERRO CRÍTICO na preparação do ML: {e}")
+            print(f"❌ ERRO CRÍTICO na previsão do ML: {e}")
+            print(f"   (Esperava {len(self.feature_columns_in_order)} colunas, mas as features atuais podem estar dessincronizadas)")
             return None, None, None, "ERRO CRÍTICO na execução do modelo."
             
-        # 0. Determinar o Número Gatilho (N_t-1)
-        try:
-            number_gatilho = features_df['number'].iloc[-2]
-            if pd.isna(number_gatilho) or number_gatilho == -1:
-                return None, None, None, "Rejeitado: Não há número gatilho (N-1) disponível."
-            number_gatilho = int(number_gatilho)
-        except IndexError:
-            return None, None, None, "Rejeitado: Histórico muito curto para identificar N-1."
 
+        # --- LÓGICA DE DECISÃO INTEGRADA (v5.11 - Conforme o seu prompt) ---
 
-        # 1. Obter os Alvos da Sua Estratégia (Os clusters de vizinhança a serem avaliados)
-        alvos_heurísticos = CALLING_NUMBERS.get(number_gatilho, set())
-        
-        if not alvos_heurísticos:
-            return None, None, None, f"Rejeitado: Gatilho {number_gatilho} não possui alvos definidos."
-
-
-        # 2. Encontrar o MAIOR EDGE (Modo IA) ou MAIOR SCORE (Modo BSB)
-        
-        best_edge = -1.0
-        best_score = 0 # Para o modo BSB
-        best_cluster = None
-        best_odds = 0.0
-        pico_vencedor = None
-        best_motivo_base = ""
-
-        # Iteramos APENAS sobre os clusters de vizinhança centrados nos números chamados
-        for pico_number in alvos_heurísticos:
+        # Modo 1: LUCAS_BSB (Puro Heurística - BSB-First)
+        # 1. Encontra o gatilho BSB
+        # 2. Pontua os alvos com base na confluência (Zonas Quentes/Frias, Atrasos)
+        # 3. Ignora o ML
+        if strategy_mode == 'LUCAS_BSB':
+            alvos_heurísticos = CALLING_NUMBERS.get(number_gatilho, set())
+            if not alvos_heurísticos:
+                return None, None, None, f"Rejeitado (BSB): Gatilho {number_gatilho} não possui alvos BSB definidos."
             
-            cluster_numbers = WHEEL_CLUSTERS.get(pico_number)
-            if not cluster_numbers: continue
+            best_score = -1
+            best_cluster_bsb = None
+            best_motivo_bsb = ""
+            pico_vencedor_bsb = None
 
-            cluster_size = len(cluster_numbers)
-            
-            motivo_base = (
-                f"HEURÍSTICA ATIVA (Gatilho {number_gatilho} chamou Pico {pico_number}, Raio {RADIUS_VIZINHOS}). "
-                f"Cluster de {cluster_size} números."
-            )
-            
-            # --- LÓGICA DE DECISÃO (IA vs BSB) ---
-            
-            if strategy_mode == 'IA_MODEL':
-                # --- MODO I.A. (EXISTENTE) ---
-                # Soma a probabilidade que o ML atribuiu a todos os números do cluster
-                cluster_probability_total = sum(prob_map.get(num, 0) for num in cluster_numbers)
+            for pico_number in alvos_heurísticos:
+                cluster_numbers = WHEEL_CLUSTERS.get(pico_number)
+                if not cluster_numbers: continue
                 
-                odds, current_edge = calculate_cluster_edge_and_odds(cluster_size, cluster_probability_total)
+                score, motivos_confluencia = calculate_heuristic_score(latest_features_row.iloc[0], cluster_numbers)
                 
-                # CRITÉRIO: Deve ter Edge positivo E ser o melhor Edge encontrado
-                if current_edge > min_edge_threshold and current_edge > best_edge:
-                    best_edge = current_edge
-                    best_cluster = sorted(list(cluster_numbers))
-                    best_odds = odds
-                    pico_vencedor = pico_number
-                    best_motivo_base = f"{motivo_base} Edge ML: {current_edge:.2%}."
-
-            
-            elif strategy_mode == 'LUCAS_BSB':
-                # --- MODO HEURÍSTICO (NOVO) ---
-                # Calcula o "score de confluência" baseado no momento da mesa
-                score, rationale_list = self.calculate_heuristic_score(latest_features_row.iloc[0], min_zscore_tension)
-                
-                # CRITÉRIO: Deve ter Score >= 3 E ser o melhor Score encontrado
-                # (Seu pedido: "pelo menos 3 a 4 padrões")
-                if score >= 3 and score > best_score:
+                if score > best_score:
                     best_score = score
-                    best_cluster = sorted(list(cluster_numbers))
-                    best_odds, _ = calculate_cluster_edge_and_odds(cluster_size, 0) # Odds é (36/N)
-                    pico_vencedor = pico_number
-                    best_motivo_base = f"{motivo_base} Confluência Score: {score}. ({', '.join(rationale_list)})"
-                    
-                    # "Falsifica" o Edge e o Stake para passar na validação do main.py
-                    best_edge = 0.01 # Fake Edge (só precisa ser > 0)
-                    # O stake_proxy é o que o main.py checa (só precisa ser > 0)
+                    best_cluster_bsb = sorted(list(cluster_numbers))
+                    best_motivo_bsb = motivos_confluencia
+                    pico_vencedor_bsb = pico_number
             
-            # ------------------------------------
+            if best_score >= 2: 
+                heuristic_edge = best_score / 5.0 # Confiança baseada no Score (5=100%)
+                best_motivo = (
+                    f"MODO BSB (Gatilho {number_gatilho}). Foco no Pico {pico_vencedor_bsb}. "
+                    f"Confluência (Score {best_score}): {best_motivo_bsb}"
+                )
+                return best_cluster_bsb, heuristic_edge, 1.0, best_motivo 
+            else:
+                return None, None, None, f"Rejeitado (BSB): Gatilho {number_gatilho} não teve Confluência (Score: {best_score})."
 
+        # Modo 2: IA_MODEL (Confluência - ML-First)
+        # 1. O ML prevê o alvo (Pico_ML)
+        # 2. O alvo é validado por heurísticas (Score de Confluência)
+        # 3. Aposta se (Probabilidade_ML > Limite) E (Score_Heurístico >= 2)
+        elif strategy_mode == 'IA_MODEL':
+            
+            # 1. Encontra o Pico do ML (o número com maior probabilidade)
+            pico_number_ml = max(prob_map, key=prob_map.get)
+            cluster_numbers = WHEEL_CLUSTERS.get(pico_number_ml)
+            if not cluster_numbers:
+                return None, None, None, f"Rejeitado (IA): Pico do ML {pico_number_ml} inválido."
                 
-        # 4. Decisão Final e Staking
-        if best_cluster:
+            cluster_size = len(cluster_numbers)
+            cluster_probability_total = sum(prob_map.get(num, 0) for num in cluster_numbers)
+            odds, edge_ml = calculate_cluster_edge_and_odds(cluster_size, cluster_probability_total)
+
+            # 2. Calcula o Score de Confluência para esse alvo do ML
+            score, motivos_confluencia = calculate_heuristic_score(latest_features_row.iloc[0], cluster_numbers)
             
-            # O stake_proxy (antigo stake_value) só precisa ser > 0 para o main.py aceitar
-            stake_proxy = 1.0 
-            
-            return best_cluster, best_edge, stake_proxy, best_motivo_base
+            # 3. Aplica a Lógica de Confluência (Ponto 3 do seu prompt)
+            if edge_ml > min_edge_threshold and score >= 2:
+                best_cluster = sorted(list(cluster_numbers))
+                best_motivo = (
+                    f"MODO IA (Pico ML {pico_number_ml}). Edge: {edge_ml:.2%}. "
+                    f"Confluência (Score {score}): {motivos_confluencia}"
+                )
+                return best_cluster, edge_ml, 1.0, best_motivo
+            else:
+                return None, None, None, f"Rejeitado (IA): Pico ML {pico_number_ml} (Edge {edge_ml:.2%}) não teve Confluência (Score {score})."
+
         
-        # Se o loop terminou sem encontrar nenhum Edge (Modo IA) ou Score (Modo BSB)
-        return None, None, None, f"Rejeitado: Gatilho {number_gatilho} não validou Edge/Confluência (Modo: {strategy_mode})."
+        # Fallback
+        return None, None, None, "Modo de estratégia desconhecido."
+
+    
+
