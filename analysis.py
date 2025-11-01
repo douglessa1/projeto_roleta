@@ -1,3 +1,4 @@
+# douglessa1/projeto_roleta/projeto_roleta-4eb8af59f00aad63289b5a75b94bcc4e4e852c83/analysis.py
 import pandas as pd
 import numpy as np
 
@@ -37,7 +38,7 @@ CALLING_NUMBERS = {
     31: set(), 32: set(), 33: set(), 34: {6, 27}, 35: {24}, 36: {2, 25},
 }
 
-# --- FUNÇÕES DE UTILIADADE (v5.3 - Tempo Real) ---
+# --- FUNÇÕES DE UTILIADADE (v6.0 - Tempo Real) ---
 
 def calcular_sequencia_consecutiva(series: pd.Series) -> pd.Series:
     """Calcula a contagem de ocorrências consecutivas ATUAIS (Tempo Real)."""
@@ -70,6 +71,26 @@ def calcular_z_score(series: pd.Series, expected_prob: float, window: int = 37) 
     z_score = (counts - expected_mean) / expected_std
     return z_score.fillna(0).reindex(series.index) 
 
+# NOVO (v6.0 - Req 4): Filtro de Momentum Temporal
+def calcular_z_score_momentum(zscore_series: pd.Series, window: int = 3) -> pd.Series:
+    """
+    Calcula o momentum de um Z-score.
+    Retorna 1 se o Z-score está aumentando (ou diminuindo se negativo)
+    consecutivamente na janela.
+    """
+    if zscore_series.empty:
+        return pd.Series(0, index=zscore_series.index)
+    
+    # Verifica se o *valor absoluto* do Z-Score está aumentando
+    abs_zscore = zscore_series.abs()
+    # Verifica se aumentou nos últimos 2 períodos (total 3 pontos: T, T-1, T-2)
+    increasing_trend = (abs_zscore.diff() > 0).rolling(window=window - 1).sum()
+    
+    # Marcamos 1 se a tendência de aumento foi constante (soma = window - 1)
+    momentum_signal = (increasing_trend == (window - 1)).astype(int)
+    
+    return momentum_signal.reindex(zscore_series.index).fillna(0)
+
 def get_physical_neighbors(number: int, radius: int = 1) -> set:
     """Retorna o conjunto de números que são vizinhos físicos de 'number' no volante."""
     if pd.isna(number) or number not in WHEEL_POSITIONS:
@@ -87,7 +108,6 @@ def get_physical_neighbors(number: int, radius: int = 1) -> set:
     return neighbors
 
 # --- FUNÇÃO AUXILIAR PARA HEURÍSTICA (Gatilho BSB) ---
-# CORREÇÃO v5.3.1: Re-adicionando a função que faltava
 def check_heuristic_call_lagged(current_num, previous_num):
     """ Checa se N_t (current) foi um alvo chamado por N_t-1 (previous) """
     if pd.isna(current_num) or previous_num == -1:
@@ -107,7 +127,7 @@ def check_heuristic_call_lagged(current_num, previous_num):
         
     return 0
 
-# --- GERAÇÃO PRINCIPAL DE FEATURES (v5.3) ---
+# --- GERAÇÃO PRINCIPAL DE FEATURES (v6.0) ---
 
 def gerar_features_avancadas(history_list: list) -> pd.DataFrame:
     
@@ -156,21 +176,20 @@ def gerar_features_avancadas(history_list: list) -> pd.DataFrame:
     T_t_1 = T_t.shift(1).fillna(-1)
     T_t_2 = T_t.shift(2).fillna(-1)
 
-    # NOVO (v5.3): O padrão é se o *número atual* (T_t) é a soma dos dois anteriores
+    # O padrão é se o *número atual* (T_t) é a soma dos dois anteriores
     T_sum_mod_10 = (T_t_1 + T_t_2).apply(lambda x: x % 10 if x >= 0 else -1)
     is_terminal_sum_pattern = (T_t == T_sum_mod_10).astype(int)
     is_terminal_sum_pattern[(T_t_1 == -1) | (T_t_2 == -1)] = 0
-    new_features['current_is_terminal_sum'] = is_terminal_sum_pattern # Renomeado
+    new_features['current_is_terminal_sum'] = is_terminal_sum_pattern 
 
-    # NOVO (v5.3): Verifica se o número *atual* (N_t) é um gatilho BSB
+    # Verifica se o número *atual* (N_t) é um gatilho BSB
     new_features['current_is_bsb_trigger'] = N_t.apply(lambda x: 1 if pd.notna(x) and int(x) in CALLING_NUMBERS else 0)
     
-    # NOVO (v5.3): Verifica se o número *atual* (N_t) foi chamado pelo *anterior* (N_t_1)
+    # Verifica se o número *atual* (N_t) foi chamado pelo *anterior* (N_t_1)
     heuristic_data = pd.DataFrame({'current_num': N_t, 'previous_num': N_t_1})
     def apply_heuristic_call_simple(row):
-        # A função check_heuristic_call_lagged agora está definida fora
         return check_heuristic_call_lagged(row['current_num'], row['previous_num'])
-    new_features['was_called_by_previous'] = heuristic_data.apply(apply_heuristic_call_simple, axis=1) # Renomeado
+    new_features['was_called_by_previous'] = heuristic_data.apply(apply_heuristic_call_simple, axis=1)
 
 
     # --- 3. FEATURES DE MOMENTUM, ATRASO, Z-SCORE (EM TEMPO REAL) ---
@@ -183,7 +202,6 @@ def gerar_features_avancadas(history_list: list) -> pd.DataFrame:
         series = pd.Series(new_features[feature], index=history_df.index)
         
         if not series.empty:
-            # CORREÇÃO v5.2: Usa as funções de Tempo Real (sem shift)
             new_features[f'{feature}_seq_ocorrencia'] = calcular_sequencia_consecutiva(series) * series
             new_features[f'{feature}_seq_nao_ocorrencia'] = calcular_sequencia_consecutiva(1 - series) * (1 - series)
             new_features[f'{feature}_atraso'] = calcular_atraso(series)
@@ -198,7 +216,6 @@ def gerar_features_avancadas(history_list: list) -> pd.DataFrame:
     for i in range(TOTAL_NUMBERS):
         features_para_zscore[f'is_num_{i}'] = 1/37
     
-    # Adiciona as probabilidades para os binários simples
     simple_binary_probs = {
         'is_red': 18/37, 'is_black': 18/37, 'is_low': 18/37, 'is_high': 18/37,
         'is_even': 18/37, 'is_odd': 18/37, 'is_d1': 12/37, 'is_d2': 12/37, 'is_d3': 12/37, 
@@ -208,9 +225,51 @@ def gerar_features_avancadas(history_list: list) -> pd.DataFrame:
          
     for feature, prob in features_para_zscore.items():
         if feature in new_features:
-            new_features[f'zscore_{feature}'] = calcular_z_score(pd.Series(new_features[feature], index=history_df.index), prob)
+            zscore_col = f'zscore_{feature}'
+            zscore_series = calcular_z_score(pd.Series(new_features[feature], index=history_df.index), prob)
+            new_features[zscore_col] = zscore_series
+            
+            # NOVO (v6.0 - Req 4): Adiciona Momentum Temporal
+            new_features[f'{zscore_col}_momentum'] = calcular_z_score_momentum(zscore_series)
 
-    # --- 4. FINALIZAÇÃO ---
+
+    # --- 4. NOVO (v6.0 - Req 4): FEATURES DE CONFLUÊNCIA (CORRELAÇÃO) ---
+    # Cria features binárias para sinais fortes (para o ML aprender)
+    
+    confluence_df = pd.DataFrame(index=history_df.index)
+    
+    # Sinal 1: Atraso de Dúzia/Coluna Extremo (Z < -2.0)
+    confluence_df['signal_zona_fria_extrema'] = 0
+    for zcol in ['zscore_is_d1', 'zscore_is_d2', 'zscore_is_d3', 'zscore_is_c1', 'zscore_is_c2', 'zscore_is_c3']:
+        if zcol in new_features:
+             confluence_df['signal_zona_fria_extrema'] = confluence_df['signal_zona_fria_extrema'] | (new_features[zcol] < -2.0)
+    
+    # Sinal 2: Atraso de 50/50 Extremo (Z < -2.0)
+    confluence_df['signal_5050_frio_extremo'] = 0
+    for zcol in ['zscore_is_red', 'zscore_is_black', 'zscore_is_low', 'zscore_is_high', 'zscore_is_even', 'zscore_is_odd']:
+        if zcol in new_features:
+            confluence_df['signal_5050_frio_extremo'] = confluence_df['signal_5050_frio_extremo'] | (new_features[zcol] < -2.0)
+
+    # Sinal 3: Sequência Longa (5+)
+    confluence_df['signal_sequencia_longa'] = 0
+    for fcol in ['is_red_seq_ocorrencia', 'is_black_seq_ocorrencia', 'is_low_seq_ocorrencia', 'is_high_seq_ocorrencia', 'is_even_seq_ocorrencia', 'is_odd_seq_ocorrencia']:
+        if fcol in new_features:
+            confluence_df['signal_sequencia_longa'] = confluence_df['signal_sequencia_longa'] | (new_features[fcol] >= 5)
+
+    # Sinal 4: Gatilho BSB ou Terminal Ativo
+    confluence_df['signal_gatilho_ativo'] = (new_features.get('was_called_by_previous', 0) > 0) | (new_features.get('current_is_terminal_sum', 0) > 0)
+
+    # Feature Final: Contagem de Sinais de Confluência
+    new_features['feature_confluence_count'] = (
+        confluence_df['signal_zona_fria_extrema'].astype(int) +
+        confluence_df['signal_5050_frio_extremo'].astype(int) +
+        confluence_df['signal_sequencia_longa'].astype(int) +
+        confluence_df['signal_gatilho_ativo'].astype(int)
+    )
+    # Adiciona as features de sinal também (para o ML)
+    new_features.update(confluence_df.astype(int))
+
+    # --- 5. FINALIZAÇÃO ---
     
     # Remove a coluna temporária 'terminal_digit'
     if 'terminal_digit' in new_features:
@@ -226,5 +285,5 @@ def gerar_features_avancadas(history_list: list) -> pd.DataFrame:
     
     final_df = final_df.copy() 
     
-    print(f"  (Analysis v5.3.1 - Tempo Real): Features geradas. Shape final: {final_df.shape}")
+    print(f"  (Analysis v6.0 - Tempo Real): Features geradas. Shape final: {final_df.shape}")
     return final_df
