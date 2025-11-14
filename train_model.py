@@ -8,14 +8,14 @@ import os
 from threading import Lock
 import xgboost as xgb
 
-# --- CORREÇÃO v5.0 ---
+# --- CORREÇÃO DE IMPORTS ---
 from dotenv import load_dotenv
 load_dotenv()
-# ---------------------
 
 import database as db 
-import analysis # Importa o analysis.py (v5.3.1)
+import analysis 
 import warnings
+# ---------------------------
 
 warnings.filterwarnings("ignore")
 
@@ -59,7 +59,7 @@ def detect_and_drop_perfect_leaks(X: pd.DataFrame, y: pd.Series, verbose: bool =
 
 def train_and_save_model(lock: Lock = None):
     """
-    Busca o histórico, gera features (v5.3), treina um modelo multiclasse (v5.3)
+    Busca o histórico, gera features, treina um modelo multiclasse 
     e salva o modelo treinado e o normalizador.
     """
 
@@ -67,17 +67,18 @@ def train_and_save_model(lock: Lock = None):
     print("1. [TREINO] Obtendo histórico bruto...")
     try:
         client = db.get_supabase_client() 
+        # Nota: O user_id padrão é usado na função get_raw_history
         history_list = db.get_raw_history(client, limit=2000)
     except Exception as e:
         print(f"❌ [TREINO] Erro ao conectar ao DB/buscar histórico: {e}")
         return
 
     if len(history_list) < MIN_RODADAS:
-        print(f"❌ [TREINO] Histórico Insuficiente: {len(history_list)}/{MIN_RODADAS}.")
+        print(f"❌ [TREINO] Histórico Insuficiente: {len(history_list)}/{MIN_RODADAS}. (Rodadas insuficientes para treino robusto)")
         return
 
-    # 2. Gerar Features Avançadas (v5.3 - Tempo Real)
-    print("2. [TREINO] Gerando features (v5.3 - Tempo Real) do histórico...")
+    # 2. Gerar Features Avançadas 
+    print("2. [TREINO] Gerando features do histórico...")
     full_features_df = analysis.gerar_features_avancadas(history_list)
 
     if full_features_df is None or full_features_df.empty:
@@ -85,17 +86,15 @@ def train_and_save_model(lock: Lock = None):
         return
 
     # 3. Preparação Rigorosa de Dados para o ML
-    print("3. [TREINO] Preparando dados para o modelo (v5.3 - Tempo Real)...")
+    print("3. [TREINO] Preparando dados para o modelo...")
 
-    # --- LÓGICA DE TREINO EM TEMPO REAL (v5.3) ---
-    
     # Target (Y) é o resultado que queremos prever: N_t+1
     y_raw = full_features_df['number'].shift(-1)
 
     # Features (X) são os padrões do número ATUAL (N_t)
     X_raw = full_features_df.drop(columns=['number'], errors='ignore')
 
-    # 4. Alinhamento de Tempo Real
+    # 4. Alinhamento de Tempo Real (Removendo a última linha incompleta)
     X = X_raw.iloc[:-1].reset_index(drop=True)
     y = y_raw.iloc[:-1].reset_index(drop=True)
     
@@ -112,7 +111,7 @@ def train_and_save_model(lock: Lock = None):
 
     feature_columns_in_order = X.columns.tolist()
 
-    # 7. Treino com Holdout
+    # 7. Treino com Holdout (Para Avaliação)
     print(f"4. [TREINO] Dividindo em treino/teste para avaliação (Amostras totais: {len(X)})...")
     
     try:
@@ -130,6 +129,7 @@ def train_and_save_model(lock: Lock = None):
     X_train_scaled = scaler.transform(X_train)
     X_test_scaled = scaler.transform(X_test)
 
+    # O modelo XGBoost é o motor de ML principal
     model = xgb.XGBClassifier(
         objective='multi:softprob',
         num_class=37,
@@ -162,7 +162,7 @@ def train_and_save_model(lock: Lock = None):
     if accuracy_test > 0.15: 
         print("⚠️  [TREINO] Acurácia no conjunto de teste está suspeitamente alta (>15%). Verifique possíveis fontes de vazamento.")
 
-    # 6. Re-treina em TODO o conjunto
+    # 6. Re-treina em TODO o conjunto (para uso em produção)
     print("6. [TREINO] Re-treinando modelo em todo o conjunto e salvando artefatos finais...")
     scaler_full = StandardScaler()
     scaler_full.fit(X)
@@ -197,7 +197,7 @@ def train_and_save_model(lock: Lock = None):
 
     print(f"7. [TREINO] Performance (treinado em todo o conjunto) -> Acurácia treinada: {acc_full:.4f} | Log Loss: {loss_full:.4f}")
 
-    # 8. Salvamento
+    # 8. Salvamento (Usa o Lock para thread-safety)
     print("8. [TREINO] Salvando arquivos do modelo...")
 
     class DummyLock:
@@ -215,11 +215,10 @@ def train_and_save_model(lock: Lock = None):
         joblib.dump(scaler_full, SCALER_PATH)
         joblib.dump(feature_columns_in_order, FEATURES_ORDER_PATH)
 
-    print(f"✅ [TREINO] Modelo, Scaler e Ordem de Features (v5.3 - Tempo Real) salvos.")
+    print(f"✅ [TREINO] Modelo, Scaler e Ordem de Features salvos.")
 
 
 if __name__ == '__main__':
-    print("--- Executando Treinamento Manual (v5.3 - Tempo Real) ---")
+    print("--- Executando Treinamento Manual ---")
     manual_lock = Lock()
     train_and_save_model(lock=manual_lock)
-

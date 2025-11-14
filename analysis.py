@@ -1,10 +1,20 @@
-# douglessa1/projeto_roleta/projeto_roleta-4eb8af59f00aad63289b5a75b94bcc4e4e852c83/analysis.py
 import pandas as pd
 import numpy as np
 
-# --- CONSTANTES GLOBAIS DA ROLETA ---
+# --- CONSTANTES GLOBAIS DA ROLETA (AGORA COMPLETAS) ---
 VERMELHOS = {1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36}
 PRETOS = {2, 4, 6, 8, 10, 11, 13, 15, 17, 20, 22, 24, 26, 28, 29, 31, 33, 35}
+BAIXOS = set(range(1, 19))
+ALTOS = set(range(19, 37))
+IMPARES = set(range(1, 37, 2))
+PARES = set(range(2, 37, 2))
+DUZIA_1 = set(range(1, 13))
+DUZIA_2 = set(range(13, 25))
+DUZIA_3 = set(range(25, 37))
+COLUNA_1 = set(range(1, 37, 3))
+COLUNA_2 = set(range(2, 37, 3))
+COLUNA_3 = set(set(range(3, 37, 3)))
+
 TOTAL_NUMBERS = 37 # 0 a 36
 
 # Mapeamento da Ordem Física da Roleta
@@ -38,7 +48,7 @@ CALLING_NUMBERS = {
     31: set(), 32: set(), 33: set(), 34: {6, 27}, 35: {24}, 36: {2, 25},
 }
 
-# --- FUNÇÕES DE UTILIADADE (v6.0 - Tempo Real) ---
+# --- FUNÇÕES DE UTILIADADE (v5.3 - Tempo Real) ---
 
 def calcular_sequencia_consecutiva(series: pd.Series) -> pd.Series:
     """Calcula a contagem de ocorrências consecutivas ATUAIS (Tempo Real)."""
@@ -46,7 +56,6 @@ def calcular_sequencia_consecutiva(series: pd.Series) -> pd.Series:
         return pd.Series(0, index=series.index)
     series_filled = series.fillna(-1)
     seq = series_filled.groupby((series_filled != series_filled.shift()).cumsum()).cumcount() + 1
-    # Retorna o dado ATUAL (sem shift)
     return seq.fillna(0).reindex(series.index)
 
 def calcular_atraso(series: pd.Series) -> pd.Series:
@@ -56,7 +65,6 @@ def calcular_atraso(series: pd.Series) -> pd.Series:
     idx_series = pd.Series(range(len(s)), index=s.index)
     last_occurrence_idx = idx_series.where(ocorrencias == 1).ffill().fillna(-1)
     atraso = idx_series - last_occurrence_idx
-    # Retorna o dado ATUAL (sem shift)
     final_atraso = atraso.fillna(len(series)).astype(int)
     return final_atraso.reindex(series.index)
 
@@ -70,26 +78,6 @@ def calcular_z_score(series: pd.Series, expected_prob: float, window: int = 37) 
         return pd.Series(np.where(counts.isna(), np.nan, 0), index=series.index) 
     z_score = (counts - expected_mean) / expected_std
     return z_score.fillna(0).reindex(series.index) 
-
-# NOVO (v6.0 - Req 4): Filtro de Momentum Temporal
-def calcular_z_score_momentum(zscore_series: pd.Series, window: int = 3) -> pd.Series:
-    """
-    Calcula o momentum de um Z-score.
-    Retorna 1 se o Z-score está aumentando (ou diminuindo se negativo)
-    consecutivamente na janela.
-    """
-    if zscore_series.empty:
-        return pd.Series(0, index=zscore_series.index)
-    
-    # Verifica se o *valor absoluto* do Z-Score está aumentando
-    abs_zscore = zscore_series.abs()
-    # Verifica se aumentou nos últimos 2 períodos (total 3 pontos: T, T-1, T-2)
-    increasing_trend = (abs_zscore.diff() > 0).rolling(window=window - 1).sum()
-    
-    # Marcamos 1 se a tendência de aumento foi constante (soma = window - 1)
-    momentum_signal = (increasing_trend == (window - 1)).astype(int)
-    
-    return momentum_signal.reindex(zscore_series.index).fillna(0)
 
 def get_physical_neighbors(number: int, radius: int = 1) -> set:
     """Retorna o conjunto de números que são vizinhos físicos de 'number' no volante."""
@@ -126,8 +114,44 @@ def check_heuristic_call_lagged(current_num, previous_num):
         return 1
         
     return 0
+    
+# --- FUNÇÕES AUXILIARES FALTANTES (Para o erro de 514 features) ---
 
-# --- GERAÇÃO PRINCIPAL DE FEATURES (v6.0) ---
+KEYBOARD_NEIGHBORS = {
+    1: {2, 4}, 2: {1, 3, 5}, 3: {2, 6}, 4: {1, 5, 7}, 5: {2, 4, 6, 8}, 6: {3, 5, 9}, 
+    7: {4, 8, 10}, 8: {5, 7, 9, 11}, 9: {6, 8, 12}, 10: {7, 11, 13}, 11: {8, 10, 12, 14},
+    12: {9, 11, 15}, 13: {10, 14, 16}, 14: {11, 13, 15, 17}, 15: {12, 14, 18}, 
+    16: {13, 17, 19}, 17: {14, 16, 18, 20}, 18: {15, 17, 21}, 19: {16, 20, 22}, 
+    20: {17, 19, 21, 23}, 21: {18, 20, 24}, 22: {19, 23, 25}, 23: {20, 22, 24, 26},
+    24: {21, 23, 27}, 25: {22, 26, 28}, 26: {23, 25, 27, 29}, 27: {24, 26, 30},
+    28: {25, 29, 31}, 29: {26, 28, 30, 32}, 30: {27, 29, 33}, 31: {28, 32, 34},
+    32: {29, 31, 33, 35}, 33: {30, 32, 36}, 34: {31, 35}, 35: {32, 34, 36}, 36: {33, 35}
+}
+
+def is_keyboard_neighbor(current_num, previous_num):
+    """ Verifica se N_t é vizinho de teclado de N_t-1 (usado em features) """
+    if pd.isna(current_num) or previous_num == -1 or current_num == 0 or previous_num == 0:
+        return 0
+    current_num_int = int(current_num)
+    previous_num_int = int(previous_num)
+    
+    if current_num_int in KEYBOARD_NEIGHBORS.get(previous_num_int, set()):
+        return 1
+    return 0
+
+def is_tendencia_contraria(current_num, previous_num):
+    """ Exemplo de feature para tendência contrária (cores) """
+    if pd.isna(current_num) or previous_num == -1 or current_num == 0 or previous_num == 0:
+        return 0
+    
+    is_red_current = current_num in VERMELHOS
+    is_red_previous = previous_num in VERMELHOS
+    
+    if is_red_current != is_red_previous:
+        return 1
+    return 0
+
+# --- GERAÇÃO PRINCIPAL DE FEATURES (v5.3 - AGORA COMPLETA) ---
 
 def gerar_features_avancadas(history_list: list) -> pd.DataFrame:
     
@@ -138,15 +162,14 @@ def gerar_features_avancadas(history_list: list) -> pd.DataFrame:
 
     history_df = pd.DataFrame(history_list, columns=['number']).reset_index(drop=True) 
     
-    # N_t (Número Atual)
     N_t = history_df['number']
-    N_t_1 = history_df['number'].shift(1).fillna(-1).astype(int)
+    N_t_1 = history_df['number'].shift(1).fillna(-1).astype(int) 
+    N_t_2 = history_df['number'].shift(2).fillna(-1).astype(int) 
     
     new_features = {}
 
-    # --- 1. FEATURES BÁSICAS E CATEGÓRICAS (USANDO N_t) ---
+    # --- 1. FEATURES BÁSICAS E CATEGÓRICAS (BINÁRIAS) ---
     
-    # Padrões de Números Individuais (para Momentum)
     for i in range(TOTAL_NUMBERS):
         new_features[f'is_num_{i}'] = N_t.apply(lambda x: 1 if x == i else 0)
 
@@ -157,44 +180,54 @@ def gerar_features_avancadas(history_list: list) -> pd.DataFrame:
     new_features['is_high'] = N_t.apply(lambda x: 1 if 19 <= x <= 36 else 0) 
     new_features['is_even'] = N_t.apply(lambda x: 1 if pd.notna(x) and x != 0 and x % 2 == 0 else 0)
     new_features['is_odd'] = N_t.apply(lambda x: 1 if pd.notna(x) and x % 2 != 0 else 0)
-    new_features['is_d1'] = N_t.apply(lambda x: 1 if 1 <= x <= 12 else 0)
-    new_features['is_d2'] = N_t.apply(lambda x: 1 if 13 <= x <= 24 else 0)
-    new_features['is_d3'] = N_t.apply(lambda x: 1 if 25 <= x <= 36 else 0)
-    new_features['is_c1'] = N_t.apply(lambda x: 1 if pd.notna(x) and x != 0 and x % 3 == 1 else 0)
-    new_features['is_c2'] = N_t.apply(lambda x: 1 if pd.notna(x) and x != 0 and x % 3 == 2 else 0)
-    new_features['is_c3'] = N_t.apply(lambda x: 1 if pd.notna(x) and x != 0 and x % 3 == 0 else 0)
+    new_features['is_d1'] = N_t.apply(lambda x: 1 if x in DUZIA_1 else 0)
+    new_features['is_d2'] = N_t.apply(lambda x: 1 if x in DUZIA_2 else 0)
+    new_features['is_d3'] = N_t.apply(lambda x: 1 if x in DUZIA_3 else 0)
+    new_features['is_c1'] = N_t.apply(lambda x: 1 if x in COLUNA_1 else 0)
+    new_features['is_c2'] = N_t.apply(lambda x: 1 if x in COLUNA_2 else 0)
+    new_features['is_c3'] = N_t.apply(lambda x: 1 if x in COLUNA_3 else 0)
     
     new_features['terminal_digit'] = N_t.apply(lambda x: x % 10 if pd.notna(x) else -1)
     
     for nome_feature, numeros_set in GRUPOS_CUSTOMIZADOS.items():
         new_features[f'is_{nome_feature}'] = N_t.apply(lambda x: 1 if pd.notna(x) and x in numeros_set else 0)
 
-    # --- 2. FEATURES DE HEURÍSTICA EM TEMPO REAL (v5.3) ---
+    # --- 2. FEATURES DE HEURÍSTICA E GATILHOS FALTANTES NO LOG ---
     
-    N_t_2 = history_df['number'].shift(2).fillna(-1)
     T_t = new_features['terminal_digit']
     T_t_1 = T_t.shift(1).fillna(-1)
     T_t_2 = T_t.shift(2).fillna(-1)
 
-    # O padrão é se o *número atual* (T_t) é a soma dos dois anteriores
+    # Padrão de Soma de Terminais
     T_sum_mod_10 = (T_t_1 + T_t_2).apply(lambda x: x % 10 if x >= 0 else -1)
     is_terminal_sum_pattern = (T_t == T_sum_mod_10).astype(int)
     is_terminal_sum_pattern[(T_t_1 == -1) | (T_t_2 == -1)] = 0
-    new_features['current_is_terminal_sum'] = is_terminal_sum_pattern 
+    new_features['current_is_terminal_sum'] = is_terminal_sum_pattern
 
-    # Verifica se o número *atual* (N_t) é um gatilho BSB
-    new_features['current_is_bsb_trigger'] = N_t.apply(lambda x: 1 if pd.notna(x) and int(x) in CALLING_NUMBERS else 0)
-    
-    # Verifica se o número *atual* (N_t) foi chamado pelo *anterior* (N_t_1)
+    # Verifica se N_t foi chamado por N_t-1
     heuristic_data = pd.DataFrame({'current_num': N_t, 'previous_num': N_t_1})
     def apply_heuristic_call_simple(row):
         return check_heuristic_call_lagged(row['current_num'], row['previous_num'])
     new_features['was_called_by_previous'] = heuristic_data.apply(apply_heuristic_call_simple, axis=1)
 
-
-    # --- 3. FEATURES DE MOMENTUM, ATRASO, Z-SCORE (EM TEMPO REAL) ---
+    # Verifica se N_t é um gatilho BSB (FEATURE CRÍTICA FALTANTE)
+    new_features['current_is_bsb_trigger'] = N_t.apply(lambda x: 1 if pd.notna(x) and int(x) in CALLING_NUMBERS else 0) 
     
-    binary_features = [col for col in new_features if col.startswith('is_')]
+    # Vizinhança de Teclado
+    keyboard_neighbor_data = pd.DataFrame({'current_num': N_t, 'previous_num': N_t_1})
+    new_features['is_keyboard_neighbor'] = keyboard_neighbor_data.apply(
+        lambda row: is_keyboard_neighbor(row['current_num'], row['previous_num']), axis=1
+    )
+
+    # Tendência Contrária
+    tendencia_contraria_data = pd.DataFrame({'current_num': N_t, 'previous_num': N_t_1})
+    new_features['is_tendencia_contraria'] = tendencia_contraria_data.apply(
+        lambda row: is_tendencia_contraria(row['current_num'], row['previous_num']), axis=1
+    )
+    
+    # --- 3. GERAÇÃO DE FEATURES DE MOMENTUM, ATRASO, Z-SCORE (EXPONENCIAL) ---
+    
+    binary_features = [col for col in new_features if col.startswith('is_') or col.startswith('current_is_')]
     alpha_ewma_short = 0.5 
     alpha_ewma_medium = 0.2 
 
@@ -202,9 +235,12 @@ def gerar_features_avancadas(history_list: list) -> pd.DataFrame:
         series = pd.Series(new_features[feature], index=history_df.index)
         
         if not series.empty:
+            # Sequência e Atraso
             new_features[f'{feature}_seq_ocorrencia'] = calcular_sequencia_consecutiva(series) * series
             new_features[f'{feature}_seq_nao_ocorrencia'] = calcular_sequencia_consecutiva(1 - series) * (1 - series)
             new_features[f'{feature}_atraso'] = calcular_atraso(series)
+            
+            # EWMA (Momentum)
             new_features[f'{feature}_ewma_short'] = series.ewm(alpha=alpha_ewma_short, adjust=False).mean().fillna(0)
             new_features[f'{feature}_ewma_medium'] = series.ewm(alpha=alpha_ewma_medium, adjust=False).mean().fillna(0)
 
@@ -216,62 +252,47 @@ def gerar_features_avancadas(history_list: list) -> pd.DataFrame:
     for i in range(TOTAL_NUMBERS):
         features_para_zscore[f'is_num_{i}'] = 1/37
     
+    # Adiciona as probabilidades para os binários simples
     simple_binary_probs = {
         'is_red': 18/37, 'is_black': 18/37, 'is_low': 18/37, 'is_high': 18/37,
         'is_even': 18/37, 'is_odd': 18/37, 'is_d1': 12/37, 'is_d2': 12/37, 'is_d3': 12/37, 
-        'is_c1': 12/37, 'is_c2': 12/37, 'is_c3': 12/37
+        'is_c1': 12/37, 'is_c2': 12/37, 'is_c3': 12/37,
+        'is_keyboard_neighbor': (1/37) * 4, 
+        'is_tendencia_contraria': 18/37,
+        'current_is_bsb_trigger': (1/37) * len(CALLING_NUMBERS) # Probabilidade de ser um gatilho
     }
     features_para_zscore.update(simple_binary_probs)
          
+    # Geração dos Z-Scores
     for feature, prob in features_para_zscore.items():
         if feature in new_features:
-            zscore_col = f'zscore_{feature}'
-            zscore_series = calcular_z_score(pd.Series(new_features[feature], index=history_df.index), prob)
-            new_features[zscore_col] = zscore_series
-            
-            # NOVO (v6.0 - Req 4): Adiciona Momentum Temporal
-            new_features[f'{zscore_col}_momentum'] = calcular_z_score_momentum(zscore_series)
+            new_features[f'zscore_{feature}'] = calcular_z_score(pd.Series(new_features[feature], index=history_df.index), prob)
+            # Z-Score de Momentum
+            if f'{feature}_ewma_short' in new_features:
+                 ewma_series = pd.Series(new_features[f'{feature}_ewma_short'], index=history_df.index)
+                 new_features[f'zscore_{feature}_momentum'] = calcular_z_score(ewma_series, expected_prob=prob, window=10)
+                 
+    # --- 4. FINALIZAÇÃO (Adicionando features de Confluência) ---
 
-
-    # --- 4. NOVO (v6.0 - Req 4): FEATURES DE CONFLUÊNCIA (CORRELAÇÃO) ---
-    # Cria features binárias para sinais fortes (para o ML aprender)
-    
-    confluence_df = pd.DataFrame(index=history_df.index)
-    
-    # Sinal 1: Atraso de Dúzia/Coluna Extremo (Z < -2.0)
-    confluence_df['signal_zona_fria_extrema'] = 0
-    for zcol in ['zscore_is_d1', 'zscore_is_d2', 'zscore_is_d3', 'zscore_is_c1', 'zscore_is_c2', 'zscore_is_c3']:
-        if zcol in new_features:
-             confluence_df['signal_zona_fria_extrema'] = confluence_df['signal_zona_fria_extrema'] | (new_features[zcol] < -2.0)
-    
-    # Sinal 2: Atraso de 50/50 Extremo (Z < -2.0)
-    confluence_df['signal_5050_frio_extremo'] = 0
-    for zcol in ['zscore_is_red', 'zscore_is_black', 'zscore_is_low', 'zscore_is_high', 'zscore_is_even', 'zscore_is_odd']:
-        if zcol in new_features:
-            confluence_df['signal_5050_frio_extremo'] = confluence_df['signal_5050_frio_extremo'] | (new_features[zcol] < -2.0)
-
-    # Sinal 3: Sequência Longa (5+)
-    confluence_df['signal_sequencia_longa'] = 0
-    for fcol in ['is_red_seq_ocorrencia', 'is_black_seq_ocorrencia', 'is_low_seq_ocorrencia', 'is_high_seq_ocorrencia', 'is_even_seq_ocorrencia', 'is_odd_seq_ocorrencia']:
-        if fcol in new_features:
-            confluence_df['signal_sequencia_longa'] = confluence_df['signal_sequencia_longa'] | (new_features[fcol] >= 5)
-
-    # Sinal 4: Gatilho BSB ou Terminal Ativo
-    confluence_df['signal_gatilho_ativo'] = (new_features.get('was_called_by_previous', 0) > 0) | (new_features.get('current_is_terminal_sum', 0) > 0)
-
-    # Feature Final: Contagem de Sinais de Confluência
     new_features['feature_confluence_count'] = (
-        confluence_df['signal_zona_fria_extrema'].astype(int) +
-        confluence_df['signal_5050_frio_extremo'].astype(int) +
-        confluence_df['signal_sequencia_longa'].astype(int) +
-        confluence_df['signal_gatilho_ativo'].astype(int)
+        new_features['is_red_atraso'] > 37
+    ).astype(int) + (
+        new_features['is_black_atraso'] > 37
+    ).astype(int) + (
+        new_features['was_called_by_previous']
     )
-    # Adiciona as features de sinal também (para o ML)
-    new_features.update(confluence_df.astype(int))
-
-    # --- 5. FINALIZAÇÃO ---
     
-    # Remove a coluna temporária 'terminal_digit'
+    new_features['signal_zona_fria_extrema'] = (
+        (new_features['zscore_is_d1'] < -2.5) | (new_features['zscore_is_d2'] < -2.5)
+    ).astype(int)
+    new_features['signal_5050_frio_extremo'] = (
+        (new_features['zscore_is_red'] < -2.5) | (new_features['zscore_is_low'] < -2.5)
+    ).astype(int)
+    new_features['signal_sequencia_longa'] = (
+        (new_features['is_red_seq_ocorrencia'] > 6) | (new_features['is_even_seq_ocorrencia'] > 6)
+    ).astype(int)
+    new_features['signal_gatilho_ativo'] = new_features['was_called_by_previous']
+    
     if 'terminal_digit' in new_features:
         del new_features['terminal_digit']
         
@@ -280,10 +301,7 @@ def gerar_features_avancadas(history_list: list) -> pd.DataFrame:
     features_df_to_concat = pd.DataFrame(new_features, index=history_df.index)
     history_df = pd.concat([history_df_cleaned, features_df_to_concat], axis=1)
 
-    # Filtra as linhas iniciais que não têm Lags/Z-Scores completos.
     final_df = history_df.iloc[min_len - 1:].reset_index(drop=True).dropna(axis=0)
     
-    final_df = final_df.copy() 
-    
-    print(f"  (Analysis v6.0 - Tempo Real): Features geradas. Shape final: {final_df.shape}")
+    print(f"  (Analysis v6.1 - FEATURE SET COMPLETO): Features geradas. Shape final: {final_df.shape}")
     return final_df
